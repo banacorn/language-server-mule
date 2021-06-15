@@ -1,0 +1,25 @@
+{
+  "name": "language-server-mule",
+  "version": "1.0.0",
+  "description": "Rescript library for hauling language servers from your disk or somewhere else",
+  "main": "Main.bs.js",
+  "scripts": {
+    "build": "npx rescript",
+    "start": "npx rescript build -w",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/banacorn/language-server-mule.git"
+  },
+  "author": "Ting-gian LUA",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/banacorn/language-server-mule/issues"
+  },
+  "homepage": "https://github.com/banacorn/language-server-mule#readme",
+  "devDependencies": {
+    "rescript": "^9.1.4",
+    "reason-promise": "^1.1.4"
+  }
+}
