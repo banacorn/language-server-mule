@@ -5,12 +5,15 @@
       "dir" : "src",
       "subdirs" : true
     },
+    "namespace": true,
     "package-specs": {
       "module": "commonjs",
       "in-source": true
     },
     "suffix": ".bs.js",
     "bs-dependencies": [
+      "reason-promise",
+      "reason-nodejs"
     ],
     "warnings": {
       "error" : "+101"

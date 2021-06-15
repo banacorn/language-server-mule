@@ -19,7 +19,8 @@
   },
   "homepage": "https://github.com/banacorn/language-server-mule#readme",
   "devDependencies": {
-    "rescript": "^9.1.4",
-    "reason-promise": "^1.1.4"
+    "reason-nodejs": "github:banacorn/reason-nodejs#adece71",
+    "reason-promise": "^1.1.4",
+    "rescript": "^9.1.4"
   }
 }

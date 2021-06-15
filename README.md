@@ -1,2 +1,4 @@
 # language-server-mule
-Retrieves language servers from your disk or somewhere else
+
+Rescript library for retrieving and interfacing with language servers
+
