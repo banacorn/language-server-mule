@@ -9,7 +9,7 @@ describe("Path Searching", () => {
     | Error(os) => Promise.resolved(Error(Js.Exn.raiseError(os)))
     | Ok(command) =>
       let (promise, resolve) = Promise.pending()
-      NodeJs.ChildProcess.exec(command, (error, stdout, stderr) => {
+      NodeJs.ChildProcess.exec(command ++ " " ++ command, (error, stdout, stderr) => {
         switch Js.Nullable.toOption(error) {
         | Some(exn) => resolve(Error(exn))
         | None =>

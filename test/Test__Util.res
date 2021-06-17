@@ -27,14 +27,14 @@ let wait = ms => {
   promise
 }
 
-exception JsExn(Js.Exn.t)
+external jsExnToExn: Js.Exn.t => exn = "%identity"
 
 module Q = {
   let toPromise = f =>
     Js.Promise.make((~resolve, ~reject) =>
       f->Promise.get(x =>
         switch x {
-        | Error(error) => reject(. JsExn(error))
+        | Error(error) => reject(. jsExnToExn(error))
         | Ok(result) => resolve(. result)
         }
       )
