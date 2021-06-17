@@ -89,36 +89,16 @@ module Event = {
   type path = string
   type args = array<string>
   type t =
-    // | OnClose(path, args, exitCode) // on `close`
-    | DisconnectedByUser // on `disconnect
-    | ShellError(Js.Exn.t) // on `error`
+    | OnDestroyed // on `disconnect` (destroyed by the user)
+    | OnError(Js.Exn.t) // on `error`
     | OnExit(path, args, exitCode, string) // on `exit` or `close`
 
   let toString = x =>
     switch x {
-    //     | OnClose(path, args, code) =>
-    //       let args = args->Array.joinWith(" ", x => x)
-    //       (
-    //         "Socket closed by process",
-    //         j`exited with code: $code
-    // path: $path
-    // args: $args
-    // `,
-    //       )
-    | DisconnectedByUser => ("Disconnected", "Connection disconnected by ourselves")
-    | ShellError(error) => ("Socket error", Util.JsError.toString(error))
-    | OnExit(path, args, code, stderr) =>
-      let args = args->Array.joinWith(" ", x => x)
-
-      (
-        "Agda has crashed !",
-        j`exited with code: $code
-  path: $path
-  args: $args
-  === message from stderr ===
-  $stderr
-  `,
-      )
+    | OnDestroyed => "Process destroyed"
+    | OnError(error) => Util.JsError.toString(error)
+    | OnExit(_, _, code, "") => "Process exited with code " ++ string_of_int(code)
+    | OnExit(_, _, code, stderr) => "Process exited with code " ++ string_of_int(code) ++ "\n" ++ stderr
     }
 }
 
@@ -169,7 +149,6 @@ module Module: Module = {
       stderr,
     )) => chan->Chan.emit(Event(OnExit(path, args, exitCode, stderr))))
 
-
     // on `data` from `stdout`
     process
     ->NodeJs.ChildProcess.stdout
@@ -206,8 +185,8 @@ module Module: Module = {
     // on errors and anomalies
     process
     ->NodeJs.ChildProcess.onClose(code => resolveOnClose((path, args, code, stderr.contents)))
-    ->NodeJs.ChildProcess.onDisconnect(() => chan->Chan.emit(Event(DisconnectedByUser)))
-    ->NodeJs.ChildProcess.onError(exn => chan->Chan.emit(Event(ShellError(exn))))
+    ->NodeJs.ChildProcess.onDisconnect(() => chan->Chan.emit(Event(OnDestroyed)))
+    ->NodeJs.ChildProcess.onError(exn => chan->Chan.emit(Event(OnError(exn))))
     ->NodeJs.ChildProcess.onExit(code => resolveOnExit((path, args, code, stderr.contents)))
     ->ignore
     {chan: chan, status: Created(process)}

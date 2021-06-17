@@ -13,16 +13,31 @@ describe("Process Interface", () => {
         // Js.log(("OUTPUT", output))
         switch output {
         | Stdout("hello\n") => ()
-        | Stdout(_) => resolve(Error("wrong output"))
+        | Stdout(output) => resolve(Error("wrong output: " ++ output))
         | Stderr(err) => resolve(Error("Stderr: " ++ err))
         | Event(OnExit(_, _, 0, _)) => resolve(Ok())
-        | Event(event) => resolve(Error("!Event: " ++ snd(Process.Event.toString(event))))
+        | Event(event) => resolve(Error("Event: " ++ Process.Event.toString(event)))
         }
       })
       promise->Promise.tap(_ => handle())
     })
   })
-  
+  describe("Use a non-existing command as the testing subject", () => {
+    Q.it("should trigger receive something from stderr", () => {
+      let process = Process.make("echooo", ["hello"])
+      let (promise, resolve) = Promise.pending()
+
+      let handle = process->Process.onOutput(output => {
+        switch output {
+        | Stdout(output) => resolve(Error("wrong output: " ++ output))
+        | Stderr(_) => resolve(Ok())
+        | Event(event) => resolve(Error("Event: " ++ Process.Event.toString(event)))
+        }
+      })
+      promise->Promise.tap(_ => handle())
+    })
+  })
+
   // describe("Use `node` as the testing subject", () => {
   //   Q.it("should behave normally", () => {
   //     Search.Path.run("node")
