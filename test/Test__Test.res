@@ -26,7 +26,13 @@ describe("Path Searching", () => {
     })
   })
   describe("`run`", () => {
-    Q.it("should reject commands that don't exist", () => {
+    Q.it("should report commands that do exist", () => {
+      Search__Path.run("npm")->Promise.mapError(err =>
+        Js.Exn.raiseError(Search__Path.Error.toString(err))
+      )
+    })
+
+    Q.it("should report `NotFound` on commands that don't exist", () => {
       Search__Path.run("somenonexistingprogram")->Promise.map(result =>
         switch result {
         | Error(NotFound) => Ok()
