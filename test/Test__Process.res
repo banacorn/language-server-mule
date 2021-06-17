@@ -13,6 +13,7 @@ describe("Process Interface", () => {
         // Js.log(("OUTPUT", output))
         switch output {
         | Stdout("hello\n") => ()
+        | Stdout("hello\r\n") => ()
         | Stdout(output) => resolve(Error("wrong output: " ++ output))
         | Stderr(err) => resolve(Error("Stderr: " ++ err))
         | Event(OnExit(_, _, 0, _)) => resolve(Ok())
