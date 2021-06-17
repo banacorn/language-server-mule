@@ -1,31 +1,32 @@
 open Belt
 
-// module for searching executables in PATH
-module Error = {
-  type t =
-    | NotResponding // the searching takes more than 1 second
-    | NotSupported(string) // with OS name
-    | OnError(Js.Exn.t)
-    | OnStderr(string)
-    | NotFound
+// module type Path = {
+//   let run: string => Promise.t<result<string, Error.t>>
+//   // the command we use for searching the path
+//   let whichCommand: result<string, string>
+// }
 
-  let toString = x =>
-    switch x {
-    | NotResponding => "Took more than 1 second to when looking for the executable"
-    | NotSupported(os) => "Path searching is not supported on \"" ++ os ++ "\""
-    | OnError(exn) => "Got error when looking for the executable: " ++ Util.JsError.toString(exn)
-    | OnStderr(msg) => "Got something from the stderr when looking for the executable: " ++ msg
-    | NotFound => "Cannot find the executalbe"
-    }
-}
+module Path = {
 
-module type Module = {
-  let run: string => Promise.t<result<string, Error.t>>
-  // the command we use for searching the path
-  let whichCommand: result<string, string>
-}
+  // module for searching executables in PATH
+  module Error = {
+    type t =
+      | NotResponding // the searching takes more than 1 second
+      | NotSupported(string) // with OS name
+      | OnError(Js.Exn.t)
+      | OnStderr(string)
+      | NotFound
 
-module Module: Module = {
+    let toString = x =>
+      switch x {
+      | NotResponding => "Took more than 1 second to when looking for the executable"
+      | NotSupported(os) => "Path searching is not supported on \"" ++ os ++ "\""
+      | OnError(exn) => "Got error when looking for the executable: " ++ Util.JsError.toString(exn)
+      | OnStderr(msg) => "Got something from the stderr when looking for the executable: " ++ msg
+      | NotFound => "Cannot find the executalbe"
+      }
+  }
+
   // the command we use for searching the path
   let whichCommand = switch NodeJs.Os.type_() {
   | "Linux"
@@ -55,7 +56,6 @@ module Module: Module = {
         error
         ->Js.Nullable.toOption
         ->Option.forEach(err => {
-          Js.log(("error", Js.Exn.name(err), Js.Exn.message(err)))
           let isNotFound =
             Js.Exn.message(err)->Option.mapWithDefault(
               false,
@@ -70,14 +70,12 @@ module Module: Module = {
 
         // stderr
         let stderr = NodeJs.Buffer.toString(stderr)
-        Js.log(("stderr", stderr))
         if stderr != "" {
           resolve(Error(OnStderr(stderr)))
         }
 
         // stdout
         let stdout = NodeJs.Buffer.toString(stdout)->String.trim
-        Js.log(("stdout", stdout))
         if stdout == "" || stdout == name ++ " not found" {
           resolve(Error(NotFound))
         } else {
@@ -89,5 +87,3 @@ module Module: Module = {
     promise
   }
 }
-
-include Module

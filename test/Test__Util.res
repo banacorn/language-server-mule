@@ -34,13 +34,13 @@ module Q = {
     Js.Promise.make((~resolve, ~reject) =>
       f->Promise.get(x =>
         switch x {
-        | Error(error) => reject(. jsExnToExn(error))
+        | Error(error) => reject(. jsExnToExn(Js.Exn.raiseError(error)))
         | Ok(result) => resolve(. result)
         }
       )
     )
 
-  let it = (s, f: unit => Promise.t<result<'a, Js.Exn.t>>) =>
+  let it = (s, f: unit => Promise.t<result<'a, string>>) =>
     BsMocha.Promise.it(s, () => f()->toPromise)
 
   let it_only = (s, f) => BsMocha.Promise.it_only(s, () => f()->toPromise)

@@ -1,7 +1,6 @@
 // module for communicating with a process
 open Belt
 
-
 // module for validating a given path
 module Validation = {
   module Error = {
@@ -90,25 +89,25 @@ module Event = {
   type path = string
   type args = array<string>
   type t =
-    | ClosedByProcess(path, args, exitCode) // on `close`
+    // | OnClose(path, args, exitCode) // on `close`
     | DisconnectedByUser // on `disconnect
     | ShellError(Js.Exn.t) // on `error`
-    | ExitedByProcess(path, args, exitCode, string) // on 'exit`
+    | OnExit(path, args, exitCode, string) // on `exit` or `close`
 
   let toString = x =>
     switch x {
-    | ClosedByProcess(path, args, code) =>
-      let args = args->Array.joinWith(" ", x => x)
-      (
-        "Socket closed by process",
-        j`exited with code: $code
-path: $path
-args: $args
-`,
-      )
+    //     | OnClose(path, args, code) =>
+    //       let args = args->Array.joinWith(" ", x => x)
+    //       (
+    //         "Socket closed by process",
+    //         j`exited with code: $code
+    // path: $path
+    // args: $args
+    // `,
+    //       )
     | DisconnectedByUser => ("Disconnected", "Connection disconnected by ourselves")
     | ShellError(error) => ("Socket error", Util.JsError.toString(error))
-    | ExitedByProcess(path, args, code, stderr) =>
+    | OnExit(path, args, code, stderr) =>
       let args = args->Array.joinWith(" ", x => x)
 
       (
@@ -158,18 +157,27 @@ module Module: Module = {
     let chan = Chan.make()
     let stderr = ref("")
     // spawn the child process
-    let process = NodeJs.ChildProcess.spawnWith(
-      "\"" ++ (path ++ "\""),
+    let process = NodeJs.ChildProcess.spawnWith("\"" ++ path ++ "\"", args, %raw(`{shell : true}`))
+
+    let (promiseOnExit, resolveOnExit) = Promise.pending()
+    let (promiseOnClose, resolveOnClose) = Promise.pending()
+    // emit `OnExit` when either `close` or `exit` was received
+    Promise.race(list{promiseOnExit, promiseOnClose})->Promise.get(((
+      path,
       args,
-      %raw(`{shell : true}`),
-    )
+      exitCode,
+      stderr,
+    )) => chan->Chan.emit(Event(OnExit(path, args, exitCode, stderr))))
+
 
     // on `data` from `stdout`
     process
     ->NodeJs.ChildProcess.stdout
     ->Option.forEach(stream =>
       stream
-      ->NodeJs.Stream.onData(chunk => chan->Chan.emit(Stdout(Node.Buffer.toString(chunk))))
+      ->NodeJs.Stream.onData(chunk => {
+        chan->Chan.emit(Stdout(Node.Buffer.toString(chunk)))
+      })
       ->ignore
     )
 
@@ -191,23 +199,16 @@ module Module: Module = {
     ->NodeJs.ChildProcess.stdin
     ->Option.forEach(stream =>
       stream
-      ->NodeJs.Stream.Writable.onClose(() => {
-        chan->Chan.emit(Event(ClosedByProcess(path, args, 0)))
-      })
+      ->NodeJs.Stream.Writable.onClose(() => resolveOnClose((path, args, 0, stderr.contents)))
       ->ignore
     )
 
     // on errors and anomalies
     process
-    ->NodeJs.ChildProcess.onClose(code => chan->Chan.emit(Event(ClosedByProcess(path, args, code))))
+    ->NodeJs.ChildProcess.onClose(code => resolveOnClose((path, args, code, stderr.contents)))
     ->NodeJs.ChildProcess.onDisconnect(() => chan->Chan.emit(Event(DisconnectedByUser)))
     ->NodeJs.ChildProcess.onError(exn => chan->Chan.emit(Event(ShellError(exn))))
-    ->NodeJs.ChildProcess.onExit(code =>
-      if code != 0 {
-        //  returns the last message from stderr
-        chan->Chan.emit(Event(ExitedByProcess(path, args, code, stderr.contents)))
-      }
-    )
+    ->NodeJs.ChildProcess.onExit(code => resolveOnExit((path, args, code, stderr.contents)))
     ->ignore
     {chan: chan, status: Created(process)}
   }
@@ -222,7 +223,7 @@ module Module: Module = {
       // listen to the `exit` event
       let _ = self.chan->Chan.on(x =>
         switch x {
-        | Event(ExitedByProcess(_, _, _, _)) =>
+        | Event(OnExit(_, _, _, _)) =>
           self.chan->Chan.destroy
           self.status = Destroyed
           resolve()
@@ -254,7 +255,7 @@ module Module: Module = {
   let onOutput = (self, callback) =>
     self.chan->Chan.on(output =>
       switch output {
-      | Event(ExitedByProcess(_, _, _, _)) =>
+      | Event(OnExit(_, _, _, _)) =>
         switch self.status {
         | Destroying(_) => () // triggered by `destroy`
         | _ => callback(output)
