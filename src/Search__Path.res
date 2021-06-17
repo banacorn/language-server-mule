@@ -55,24 +55,29 @@ module Module: Module = {
         error
         ->Js.Nullable.toOption
         ->Option.forEach(err => {
-          let isNotFound = Js.Exn.message(err) == Some("Command failed: which " ++ name ++ "\n")
+          Js.log(("error", Js.Exn.name(err), Js.Exn.message(err)))
+          let isNotFound =
+            Js.Exn.message(err)->Option.mapWithDefault(
+              false,
+              Js.String.startsWith("Command failed: " ++ whichCommand ++ " " ++ name ++ "\n"),
+            )
           if isNotFound {
-          resolve(Error(NotFound))
-
+            resolve(Error(NotFound))
           } else {
-
-          resolve(Error(OnError(err)))
+            resolve(Error(OnError(err)))
           }
         })
 
         // stderr
         let stderr = NodeJs.Buffer.toString(stderr)
+        Js.log(("stderr", stderr))
         if stderr != "" {
           resolve(Error(OnStderr(stderr)))
         }
 
         // stdout
         let stdout = NodeJs.Buffer.toString(stdout)->String.trim
+        Js.log(("stdout", stdout))
         if stdout == "" || stdout == name ++ " not found" {
           resolve(Error(NotFound))
         } else {
