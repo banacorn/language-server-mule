@@ -1,9 +1,16 @@
 open BsMocha.Mocha
 module Assert = BsMocha.Assert
 
-describe("1 + 1 = 2", () => {
-  it("should work", () => {
-    Assert.equal(1 + 1, 2)
+open Test__Util
+
+describe("Path Searching", () => {
+  Q.it("Command provided by `whichCommand` should exist", () => {
+    switch Search__Path.whichCommand {
+    | Error(os) => Promise.resolved(Error(Js.Exn.raiseError(os)))
+    | Ok(command) => Promise.resolved(Error(Js.Exn.raiseError(command)))
+    } ;
+
+    // NodeJs.ChildProcess.exec(command)
   })
   // Q.it("should calculate the infomation needed for case splitting correctly", () =>
   //   VSCode.Window.showTextDocumentWithUri(
