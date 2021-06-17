@@ -27,18 +27,20 @@ let wait = ms => {
   promise
 }
 
+exception JsExn(Js.Exn.t)
+
 module Q = {
   let toPromise = f =>
     Js.Promise.make((~resolve, ~reject) =>
       f->Promise.get(x =>
         switch x {
-        | Error(error) => reject(. error)
+        | Error(error) => reject(. JsExn(error))
         | Ok(result) => resolve(. result)
         }
       )
     )
 
-  let it = (s, f: unit => Promise.t<result<'a, 'error>>) =>
+  let it = (s, f: unit => Promise.t<result<'a, Js.Exn.t>>) =>
     BsMocha.Promise.it(s, () => f()->toPromise)
 
   let it_only = (s, f) => BsMocha.Promise.it_only(s, () => f()->toPromise)

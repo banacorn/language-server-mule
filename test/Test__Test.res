@@ -7,10 +7,23 @@ describe("Path Searching", () => {
   Q.it("Command provided by `whichCommand` should exist", () => {
     switch Search__Path.whichCommand {
     | Error(os) => Promise.resolved(Error(Js.Exn.raiseError(os)))
-    | Ok(command) => Promise.resolved(Error(Js.Exn.raiseError(command)))
-    } ;
+    | Ok(command) =>
+      let (promise, resolve) = Promise.pending()
+      NodeJs.ChildProcess.exec(command, (error, stdout, stderr) => {
+        switch Js.Nullable.toOption(error) {
+        | Some(exn) => resolve(Error(exn))
+        | None =>
+          if NodeJs.Buffer.toString(stderr) == "" {
+            resolve(Ok(NodeJs.Buffer.toString(stdout)))
+          } else {
+            resolve(Error(Js.Exn.raiseError(NodeJs.Buffer.toString(stdout))))
+          }
+        }
+      })->ignore
+      promise
+    }
 
-    // NodeJs.ChildProcess.exec(command)
+    //
   })
   // Q.it("should calculate the infomation needed for case splitting correctly", () =>
   //   VSCode.Window.showTextDocumentWithUri(
