@@ -7,7 +7,6 @@ open Belt
 // }
 
 module Path = {
-
   // module for searching executables in PATH
   module Error = {
     type t =
@@ -36,7 +35,7 @@ module Path = {
   | os => Error(os)
   }
 
-  let run = (name): Promise.t<result<string, Error.t>> => {
+  let search = (name): Promise.t<result<string, Error.t>> => {
     let (promise, resolve) = Promise.pending()
 
     // reject if the process hasn't responded for more than 1 second
@@ -85,5 +84,27 @@ module Path = {
     }
 
     promise
+  }
+}
+
+module Port = {
+  open NodeJs.Net;
+
+  // see if the TCP port is available
+  let probe = (port, host) => {
+    let (promise, resolve) = Promise.pending()
+    // connect and resolve `Ok()` on success
+    let socket = NodeJs.Net.TcpSocket.make()
+
+    socket
+    ->NodeJs.Net.TcpSocket.connect(~port, ~host, () => ())
+    ->NodeJs.Net.Socket.onConnectOnce(() => resolve(Ok()))
+    ->NodeJs.Net.Socket.onErrorOnce(exn => resolve(Error(exn)))
+    ->ignore
+
+    // destroy the connection afterwards
+    promise->Promise.tap(_ => {
+      Socket.destroy(socket, ~error=None)->ignore
+    })
   }
 }
