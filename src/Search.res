@@ -1,11 +1,5 @@
 open Belt
 
-// module type Path = {
-//   let run: string => Promise.t<result<string, Error.t>>
-//   // the command we use for searching the path
-//   let whichCommand: result<string, string>
-// }
-
 module Path = {
   // module for searching executables in PATH
   module Error = {
