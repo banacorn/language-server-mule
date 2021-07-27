@@ -1,4 +1,3 @@
 # language-server-mule
 
-Rescript library for retrieving and interfacing with language servers
-
+Rescript library for VS Code extensions to search, aqcuire, and interface with language servers or programs
