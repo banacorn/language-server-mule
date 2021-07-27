@@ -48,14 +48,16 @@ describe("Port Probing", () => {
   describe("`Search.Port.probe`", () => {
     Q.it("should report Ok on the port that is available", () => {
       //
+      let (promise, resolve) = Promise.pending()
       let tempServer =
         NodeJs.Net.TcpServer.make()->NodeJs.Net.TcpServer.listen(
           ~port=23456,
           ~host="localhost",
-          ~callback=() => (),
+          ~callback=resolve,
         )
 
-      Search.Port.probe(23456, "localhost")
+      promise
+      ->Promise.flatMap(() => Search.Port.probe(23456, "localhost"))
       ->Promise.mapError(Util.JsError.toString)
       ->Promise.tap(_ => NodeJs.Net.TcpServer.close(tempServer, ~callback=_ => ())->ignore)
     })
