@@ -15,31 +15,38 @@ module Source = {
 }
 
 module Module: {
-  let run: array<Source.t> => Promise.t<result<LSP.ServerOptions.t, Error.t>>
+  let search: Source.t => Promise.promise<Promise.result<Handle.t, Error.t>>
+  let searchUntilSuccess: array<Source.t> => Promise.promise<Promise.result<Handle.t, Error.t>>
+
+  let asLanguageServer: (string, Handle.t) => Promise.t<result<LSPClient.t, LSPClient.Error.t>>
 } = {
-  let toLSPServerOptions = source =>
+  let search = source =>
     switch source {
     | Source.FromStdIO(name) =>
       Search.Path.search(name)
       ->Promise.mapError(e => Error.StdIO(e))
-      ->Promise.mapOk(path => LSP.ServerOptions.makeWithCommand(path))
+      ->Promise.mapOk(path => Handle.StdIO(name, path))
     | FromTCP(port, host) =>
       Search.Port.probe(port, host)
       ->Promise.mapError(e => Error.TCP(e))
-      ->Promise.mapOk(() => LSP.ServerOptions.makeWithStreamInfo(port, host))
+      ->Promise.mapOk(() => Handle.TCP(port, host))
     }
 
-  let rec tryUntilSuccess = sources =>
-    switch sources {
-    | list{} => Promise.resolved(Error(Error.NoSourcesGiven))
-    | list{x} => toLSPServerOptions(x)
-    | list{x, ...xs} =>
-      toLSPServerOptions(x)->Promise.flatMap(result =>
-        switch result {
-        | Error(_) => tryUntilSuccess(xs)
-        | Ok(client) => Promise.resolved(Ok(client))
-        }
-      )
-    }
-  let run = xs => xs->List.fromArray->tryUntilSuccess
+  let searchUntilSuccess = sources => {
+    let rec tryUntilSuccess = input =>
+      switch input {
+      | list{} => Promise.resolved(Error(Error.NoSourcesGiven))
+      | list{x} => search(x)
+      | list{x, ...xs} =>
+        search(x)->Promise.flatMap(result =>
+          switch result {
+          | Error(_) => tryUntilSuccess(xs)
+          | Ok(client) => Promise.resolved(Ok(client))
+          }
+        )
+      }
+    sources->List.fromArray->tryUntilSuccess
+  }
+
+  let asLanguageServer = LSPClient.make
 }
