@@ -4,9 +4,9 @@ module Assert = BsMocha.Assert
 open Test__Util
 
 describe("Path Searching", () => {
-  describe("`Search.Path.whichCommand`", () => {
+  describe("`Source.Path.whichCommand`", () => {
     Q.it("should work on itself", () => {
-      switch Search.Path.whichCommand {
+      switch Source.Path.whichCommand {
       | Error(os) => Promise.resolved(Error(os))
       | Ok(command) =>
         let (promise, resolve) = Promise.pending()
@@ -25,18 +25,18 @@ describe("Path Searching", () => {
       }
     })
   })
-  describe("`Search.Path.run`", () => {
+  describe("`Source.Path.run`", () => {
     Q.it("should report commands that do exist", () => {
-      Search.Path.search("npm")->Promise.mapError(err =>
-        Js.Exn.raiseError(Search.Path.Error.toString(err))
+      Source.Path.search("npm")->Promise.mapError(err =>
+        Js.Exn.raiseError(Source.Path.Error.toString(err))
       )
     })
 
     Q.it("should report `NotFound` on commands that don't exist", () => {
-      Search.Path.search("somenonexistingprogram")->Promise.map(result =>
+      Source.Path.search("somenonexistingprogram")->Promise.map(result =>
         switch result {
         | Error(NotFound) => Ok()
-        | Error(err) => Error(Js.Exn.raiseError(Search.Path.Error.toString(err)))
+        | Error(err) => Error(Js.Exn.raiseError(Source.Path.Error.toString(err)))
         | Ok(result) => Error(Js.Exn.raiseError(result))
         }
       )
@@ -45,7 +45,7 @@ describe("Path Searching", () => {
 })
 
 describe("Port Probing", () => {
-  describe("`Search.Port.probe`", () => {
+  describe("`Source.Port.probe`", () => {
     Q.it("should report Ok on the port that is available", () => {
       //
       let (promise, resolve) = Promise.pending()
@@ -57,12 +57,12 @@ describe("Port Probing", () => {
         )
 
       promise
-      ->Promise.flatMap(() => Search.Port.probe(23456, "localhost"))
+      ->Promise.flatMap(() => Source.Port.probe(23456, "localhost"))
       ->Promise.mapError(Util.JsError.toString)
       ->Promise.tap(_ => NodeJs.Net.TcpServer.close(tempServer, ~callback=_ => ())->ignore)
     })
     Q.it("should report Error on ports that are not available", () => {
-      Search.Port.probe(12345, "localhost")->Promise.map(result =>
+      Source.Port.probe(12345, "localhost")->Promise.map(result =>
         switch result {
         | Error(_exn) => Ok()
         | Ok() => Error("Port should not be available")

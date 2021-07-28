@@ -3,6 +3,8 @@ module Assert = BsMocha.Assert
 
 open Test__Util
 
+open Client
+
 describe("Process Interface", () => {
   describe("Use `echo` as the testing subject", () => {
     Q.it("should trigger `close`", () => {
