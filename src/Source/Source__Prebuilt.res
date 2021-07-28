@@ -74,7 +74,6 @@ module Error = {
     // file system
     | CannotDeleteFile(Js.Exn.t)
     | CannotRenameFile(Js.Exn.t)
-    | CannotWriteFile(Js.Exn.t)
     | CannotUnzipFile(Unzip.Error.t)
 
   let toString = x =>
@@ -89,68 +88,66 @@ module Error = {
     // file system
     | CannotDeleteFile(exn) => "Failed to delete files:\n" ++ Util.JsError.toString(exn)
     | CannotRenameFile(exn) => "Failed to rename files:\n" ++ Util.JsError.toString(exn)
-    | CannotWriteFile(exn) => "Failed to  write files:\n" ++ Util.JsError.toString(exn)
     | CannotUnzipFile(error) => Unzip.Error.toString(error)
     }
 }
 
+module Asset = {
+  type t = {
+    name: string,
+    url: string,
+  }
+
+  let decode = json => {
+    open Json.Decode
+    {
+      url: json |> field("browser_download_url", string),
+      name: json |> field("name", string),
+    }
+  }
+}
+
+module Release = {
+  type t = {
+    tagName: string,
+    assets: array<Asset.t>,
+  }
+
+  let decode = json => {
+    open Json.Decode
+    {
+      tagName: json |> field("tag_name", string),
+      assets: json |> field("assets", array(Asset.decode)),
+    }
+  }
+
+  let parseReleases = json =>
+    try {
+      Ok(json |> Json.Decode.array(decode))
+    } catch {
+    | Json.Decode.DecodeError(e) => Error(Error.ResponseDecodeError(e, json))
+    }
+
+  // NOTE: no caching
+  let getReleasesFromGitHub = (username, repository, userAgent) => {
+    let httpOptions = {
+      "host": "api.github.com",
+      "path": "/repos/" ++ username ++ "/" ++ repository ++ "/releases",
+      "headers": {
+        "User-Agent": userAgent,
+      },
+    }
+
+    Download.asJson(httpOptions)->Promise.map(result =>
+      switch result {
+      | Error(e) => Error(Error.CannotDownload(e))
+      | Ok(json) => parseReleases(json)
+      }
+    )
+  }
+}
+
 module Metadata = {
-  module Asset = {
-    type t = {
-      name: string,
-      url: string,
-    }
-
-    let decode = json => {
-      open Json.Decode
-      {
-        url: json |> field("browser_download_url", string),
-        name: json |> field("name", string),
-      }
-    }
-  }
-
-  module Release = {
-    type t = {
-      tagName: string,
-      assets: array<Asset.t>,
-    }
-
-    let decode = json => {
-      open Json.Decode
-      {
-        tagName: json |> field("tag_name", string),
-        assets: json |> field("assets", array(Asset.decode)),
-      }
-    }
-
-    let parseMetadata = json =>
-      try {
-        Ok(json |> Json.Decode.array(decode))
-      } catch {
-      | Json.Decode.DecodeError(e) => Error(Error.ResponseDecodeError(e, json))
-      }
-
-    // NOTE: no caching
-    let getReleasesFromGitHub = (username, repository, userAgent) => {
-      // the url is fixed for now
-      let httpOptions = {
-        "host": "api.github.com",
-        "path": "/repos/" ++ username ++ "/" ++ repository ++ "/releases",
-        "headers": {
-          "User-Agent": userAgent,
-        },
-      }
-
-      Download.asJson(httpOptions)->Promise.map(result =>
-        switch result {
-        | Error(e) => Error(Error.CannotDownload(e))
-        | Ok(json) => parseMetadata(json)
-        }
-      )
-    }
-  }
-
   type t = {
     srcUrl: string,
     destPath: string,
@@ -215,6 +212,7 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     expectedVersion: string,
+    chooseFromReleases: array<Release.t> => option<Asset.t>,
   }
   let get: t => Promise.t<result<string, Error.t>>
 } = {
@@ -224,6 +222,7 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     expectedVersion: string,
+    chooseFromReleases: array<Release.t> => option<Asset.t>,
   }
   type state =
     | Downloaded(string)

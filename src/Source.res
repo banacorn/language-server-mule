@@ -41,6 +41,7 @@ let search = source =>
       userAgent: userAgent,
       globalStoragePath: globalStoragePath,
       expectedVersion: expectedVersion,
+      chooseFromReleases: _ => None
     })
     ->Promise.mapError(e => Error.Prebuilt(e))
     ->Promise.mapOk(path => Handle.Prebuilt(path))
