@@ -79,7 +79,7 @@ module Module: Module = {
     let serverOptions = switch handle {
     | Source.Handle.TCP(port, _host) => LSP.ServerOptions.makeWithStreamInfo(port, "localhost")
     | StdIO(_name, path) => LSP.ServerOptions.makeWithCommand(path)
-    // | Prebuilt(_version, path) => LSP.ServerOptions.makeWithCommand(path)
+    | Prebuilt(path) => LSP.ServerOptions.makeWithCommand(path)
     }
 
     let clientOptions = {

@@ -251,13 +251,13 @@ module Metadata = {
       }
 
     // NOTE: no caching
-    let getReleasesFromGitHub = () => {
+    let getReleasesFromGitHub = (username, repository, userAgent) => {
       // the url is fixed for now
       let httpOptions = {
         "host": "api.github.com",
-        "path": "/repos/scmlab/gcl/releases",
+        "path": "/repos/" ++ username ++ "/" ++ repository ++ "/releases",
         "headers": {
-          "User-Agent": "gcl-vscode",
+          "User-Agent": userAgent,
         },
       }
       HTTP.getWithRedirects(httpOptions)
@@ -278,7 +278,7 @@ module Metadata = {
     version: string,
   }
 
-  let getCurrentVersion = (globalStoragePath, version) => {
+  let getCurrentVersion = (username, repository, userAgent, globalStoragePath, version) => {
     let getCurrentRelease = (releases: array<Release.t>) => {
       open Belt
       let matched = releases->Array.keep(release => release.tagName == version)
@@ -323,15 +323,29 @@ module Metadata = {
       ->Promise.resolved
     }
 
-    Release.getReleasesFromGitHub()
+    Release.getReleasesFromGitHub(username, repository, userAgent)
     ->Promise.flatMapOk(getCurrentRelease)
     ->Promise.flatMapOk(getCurrentAsset)
   }
 }
 
 module Module: {
-  let get: string => string => Promise.t<result<string, Error.t>>
+  type t = {
+    username: string,
+    repository: string,
+    userAgent: string,
+    globalStoragePath: string,
+    expectedVersion: string,
+  }
+  let get: t => Promise.t<result<string, Error.t>>
 } = {
+  type t = {
+    username: string,
+    repository: string,
+    userAgent: string,
+    globalStoragePath: string,
+    expectedVersion: string,
+  }
   type state =
     | Downloaded(string)
     | InFlight(Promise.t<result<string, Error.t>>)
@@ -428,15 +442,21 @@ module Module: {
 
   let state: ref<option<state>> = ref(None)
 
-  let get = (globalStoragePath, version): Promise.t<result<string, Error.t>> => {
+  let get = self => {
     switch state.contents {
     | None =>
       // not initialized yet
-      switch checkExistingDownload(globalStoragePath, version) {
+      switch checkExistingDownload(self.globalStoragePath, self.expectedVersion) {
       | Ok(None) =>
         let (promise, resolve) = Promise.pending()
         state := Some(InFlight(promise))
-        Metadata.getCurrentVersion(globalStoragePath, version)
+        Metadata.getCurrentVersion(
+          self.username,
+          self.repository,
+          self.repository,
+          self.globalStoragePath,
+          self.expectedVersion,
+        )
         ->Promise.flatMapOk(downloadLanguageServer)
         ->Promise.tap(resolve)
       | Ok(Some(path)) =>
