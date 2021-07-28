@@ -16,9 +16,10 @@ module type Module = {
   let destroy: t => Promise.t<unit>
   // request / notification / error
   let sendRequest: (t, Js.Json.t) => Promise.t<result<Js.Json.t, Error.t>>
+  let onRequest: (t, Js.Json.t => unit) => VSCode.Disposable.t
   let sendNotification: (t, Js.Json.t) => Promise.promise<result<unit, Error.t>>
-  let onNotification: (Js.Json.t => unit) => VSCode.Disposable.t
-  let onError: (Error.t => unit) => VSCode.Disposable.t
+  let onNotification: (t, Js.Json.t => unit) => VSCode.Disposable.t
+  let onError: (t, Error.t => unit) => VSCode.Disposable.t
   // properties
   let getHandle: t => Handle.t
 }
@@ -28,20 +29,18 @@ module Module: Module = {
 
   type t = {
     client: LSP.LanguageClient.t,
-    subscription: VSCode.Disposable.t,
     id: string, // language id, also for identifying custom methods
     name: string, // name for the language server client 
     handle: Handle.t,
+    // event emitters
+    errorChan: Chan.t<Js.Exn.t>,
+    requestChan: Chan.t<Js.Json.t>,
+    notificationChan: Chan.t<Js.Json.t>,
   }
 
-  // for emitting errors
-  let errorChan: Chan.t<Js.Exn.t> = Chan.make()
-  // for receiving notification
-  let notificationChan: Chan.t<Js.Json.t> = Chan.make()
-
-  let onError = callback =>
-    errorChan->Chan.on(e => callback(Error.ConnectionError(e)))->VSCode.Disposable.make
-  let onNotification = callback => notificationChan->Chan.on(callback)->VSCode.Disposable.make
+  let onError = self => callback =>
+    self.errorChan->Chan.on(e => callback(Error.ConnectionError(e)))->VSCode.Disposable.make
+  let onNotification = self => callback => self.notificationChan->Chan.on(callback)->VSCode.Disposable.make
   let sendNotification = (self, data) =>
     self.client
     ->LSP.LanguageClient.onReady
@@ -60,12 +59,19 @@ module Module: Module = {
     })
     ->Promise.mapError(exn => Error.CannotSendRequest(exn))
 
+  let onRequest = self => callback => self.requestChan->Chan.on(callback)->VSCode.Disposable.make
+
   let destroy = self => {
-    self.subscription->VSCode.Disposable.dispose->ignore
+    self.errorChan->Chan.destroy
+    self.notificationChan->Chan.destroy
+    self.requestChan->Chan.destroy
     self.client->LSP.LanguageClient.stop->Promise.Js.toResult->Promise.map(_ => ())
   }
 
   let make = (id, name, handle) => {
+
+    let errorChan = Chan.make()
+
     let serverOptions = switch handle {
     | Handle.TCP(port, _host) => LSP.ServerOptions.makeWithStreamInfo(port, "localhost")
     | StdIO(_name, path) => LSP.ServerOptions.makeWithCommand(path)
@@ -115,10 +121,12 @@ module Module: Module = {
 
     let self = {
       client: languageClient,
-      subscription: languageClient->LSP.LanguageClient.start,
       id: id,
       name: name,
       handle: handle,
+      errorChan: errorChan,
+      notificationChan: Chan.make(),
+      requestChan: Chan.make()
     }
 
     // Let `LanguageClient.onReady` and `errorChan->Chan.once` race
@@ -128,9 +136,14 @@ module Module: Module = {
     })
     ->Promise.mapError(error => Error.ConnectionError(error))
     ->Promise.mapOk(() => {
+      // start listening for incoming requests notifications
+      self.client->LSP.LanguageClient.onRequest(self.id, json => {
+        self.requestChan->Chan.emit(json)
+        Promise.resolved()
+      })
       // start listening for incoming notifications
       self.client->LSP.LanguageClient.onNotification(self.id, json => {
-        notificationChan->Chan.emit(json)
+        self.notificationChan->Chan.emit(json)
       })
       self
     })
