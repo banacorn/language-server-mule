@@ -1,4 +1,5 @@
 module Unzip = Source__Prebuilt__Unzip
+module Download = Source__Prebuilt__Download
 
 module Nd = {
   module Fs = {
@@ -53,23 +54,6 @@ module Nd = {
       "createWriteStream"
   }
 
-  module Https = {
-    @module("https")
-    external get: (
-      {"host": string, "path": string, "headers": {"User-Agent": string}},
-      NodeJs.Http.IncomingMessage.t => unit,
-    ) => unit = "get"
-
-    @module("https")
-    external getWithUrl: (string, NodeJs.Http.IncomingMessage.t => unit) => unit = "get"
-
-    // @bs.module("https")
-    // external get: (
-    //   {"host": string, "path": string, "protocol": string, "port": int, "headers": string},
-    //   NodeJs.Stream.readable,
-    // ) => unit = "get"
-  }
-
   module Url = {
     @module("url")
     external parse: string => {"host": string, "path": string, "protocol": string, "port": int} =
@@ -83,8 +67,7 @@ module Error = {
     | ResponseParseError(string)
     | ResponseDecodeError(string, Js.Json.t)
     // network
-    | NoRedirectLocation
-    | ServerResponseError(Js.Exn.t)
+    | CannotDownload(Download.Error.t)
     //
     | NoMatchingVersion(string)
     | NotSupportedOS(string)
@@ -99,8 +82,7 @@ module Error = {
     | ResponseParseError(raw) => "Cannot parse release metadata from GitHub:\n" ++ raw
     | ResponseDecodeError(msg, _) => "Cannot decode release metadata JSON from GitHub:\n" ++ msg
     // network
-    | NoRedirectLocation => "Got HTTP 301/302 from GitHub without location in headers"
-    | ServerResponseError(exn) => "Server Response Error:\n" ++ Util.JsError.toString(exn)
+    | CannotDownload(error) => Download.Error.toString(error)
     // metadata
     | NoMatchingVersion(version) => "Cannot find " ++ version ++ " in releases from GitHub"
     | NotSupportedOS(os) => "Cannot find prebuilt for " ++ os
@@ -108,43 +90,8 @@ module Error = {
     | CannotDeleteFile(exn) => "Failed to delete files:\n" ++ Util.JsError.toString(exn)
     | CannotRenameFile(exn) => "Failed to rename files:\n" ++ Util.JsError.toString(exn)
     | CannotWriteFile(exn) => "Failed to  write files:\n" ++ Util.JsError.toString(exn)
-    | CannotUnzipFile(exn) => Unzip.Error.toString(exn)
+    | CannotUnzipFile(error) => Unzip.Error.toString(error)
     }
-}
-
-module HTTP = {
-  let gatherDataFromResponse = res => {
-    open NodeJs.Http.IncomingMessage
-    let (promise, resolve) = Promise.pending()
-    let body = ref("")
-    res->onData(buf => body := body.contents ++ NodeJs.Buffer.toString(buf))->ignore
-    res->onError(error => resolve(Error(Error.ServerResponseError(error))))->ignore
-    res->onClose(() => resolve(Ok(body.contents)))->ignore
-    promise
-  }
-
-  // with HTTP 301/302 redirect handled
-  let getWithRedirects = options => {
-    let (promise, resolve) = Promise.pending()
-    Nd.Https.get(options, res => {
-      // check the response status code first
-      let statusCode = NodeJs.Http.IncomingMessage.statusCode(res)
-      switch statusCode {
-      // redirect
-      | 301
-      | 302 =>
-        let headers = NodeJs.Http.IncomingMessage.headers(res)
-        switch headers.location {
-        | None => resolve(Error(Error.NoRedirectLocation))
-        | Some(urlAfterRedirect) =>
-          Nd.Https.getWithUrl(urlAfterRedirect, resAfterRedirect => resolve(Ok(resAfterRedirect)))
-        }
-      // ok ?
-      | _ => resolve(Ok(res))
-      }
-    })
-    promise
-  }
 }
 
 module Metadata = {
@@ -194,13 +141,11 @@ module Metadata = {
           "User-Agent": userAgent,
         },
       }
-      HTTP.getWithRedirects(httpOptions)
-      ->Promise.flatMapOk(HTTP.gatherDataFromResponse)
-      ->Promise.flatMapOk(raw =>
-        try {
-          Promise.resolved(parseMetadata(Js.Json.parseExn(raw)))
-        } catch {
-        | _ => Promise.resolved(Error(Error.ResponseParseError(raw)))
+
+      Download.asJson(httpOptions)->Promise.map(result =>
+        switch result {
+        | Error(e) => Error(Error.CannotDownload(e))
+        | Ok(json) => parseMetadata(json)
         }
       )
     }
@@ -294,16 +239,7 @@ module Module: {
       },
     }
 
-    HTTP.getWithRedirects(httpOptions)->Promise.flatMapOk(res => {
-      let (promise, resolve) = Promise.pending()
-      let fileStream = Nd.Fs.createWriteStream(destPath)
-      fileStream
-      ->NodeJs.Fs.WriteStream.onError(exn => resolve(Error(Error.CannotWriteFile(exn))))
-      ->ignore
-      fileStream->NodeJs.Fs.WriteStream.onClose(() => resolve(Ok()))->ignore
-      res->NodeJs.Http.IncomingMessage.pipe(fileStream)->ignore
-      promise
-    })
+    Download.asFile(httpOptions, destPath)->Promise.mapError(e => Error.CannotDownload(e))
   }
 
   let downloadLanguageServer = (metadata: Metadata.t) => {
@@ -318,7 +254,10 @@ module Module: {
     )
     // unzip the downloaded file
     ->Promise.flatMapOk(() => {
-      Unzip.run(metadata.destPath ++ ".zip", metadata.destPath)->Promise.mapError(error => Error.CannotUnzipFile(error))
+      Unzip.run(
+        metadata.destPath ++ ".zip",
+        metadata.destPath,
+      )->Promise.mapError(error => Error.CannotUnzipFile(error))
     })
     // remove the zip file
     ->Promise.flatMapOk(() =>
