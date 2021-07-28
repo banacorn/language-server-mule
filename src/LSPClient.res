@@ -12,7 +12,7 @@ module LSP = LanguageServerMule.LSP
 module type Module = {
   type t
   // lifecycle
-  let make: (string, Handle.t) => Promise.t<result<t, Error.t>>
+  let make: (string, string, Handle.t) => Promise.t<result<t, Error.t>>
   let destroy: t => Promise.t<unit>
   // request / notification / error
   let sendRequest: (t, Js.Json.t) => Promise.t<result<Js.Json.t, Error.t>>
@@ -30,6 +30,7 @@ module Module: Module = {
     client: LSP.LanguageClient.t,
     subscription: VSCode.Disposable.t,
     id: string, // language id, also for identifying custom methods
+    name: string, // name for the language server client 
     handle: Handle.t,
   }
 
@@ -55,7 +56,7 @@ module Module: Module = {
     ->LSP.LanguageClient.onReady
     ->Promise.Js.toResult
     ->Promise.flatMapOk(() => {
-      self.client->LSP.LanguageClient.sendRequest("guabao", data)->Promise.Js.toResult
+      self.client->LSP.LanguageClient.sendRequest(self.id, data)->Promise.Js.toResult
     })
     ->Promise.mapError(exn => Error.CannotSendRequest(exn))
 
@@ -64,7 +65,7 @@ module Module: Module = {
     self.client->LSP.LanguageClient.stop->Promise.Js.toResult->Promise.map(_ => ())
   }
 
-  let make = (id, handle) => {
+  let make = (id, name, handle) => {
     let serverOptions = switch handle {
     | Handle.TCP(port, _host) => LSP.ServerOptions.makeWithStreamInfo(port, "localhost")
     | StdIO(_name, path) => LSP.ServerOptions.makeWithCommand(path)
@@ -106,8 +107,8 @@ module Module: Module = {
 
     // Create the language client
     let languageClient = LSP.LanguageClient.make(
-      "guabaoLanguageServer",
-      "Guabao Language Server",
+      id,
+      name,
       serverOptions,
       clientOptions,
     )
@@ -116,6 +117,7 @@ module Module: Module = {
       client: languageClient,
       subscription: languageClient->LSP.LanguageClient.start,
       id: id,
+      name: name,
       handle: handle,
     }
 

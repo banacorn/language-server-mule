@@ -18,7 +18,7 @@ module Module: {
   let search: Source.t => Promise.promise<Promise.result<Handle.t, Error.t>>
   let searchUntilSuccess: array<Source.t> => Promise.promise<Promise.result<Handle.t, Error.t>>
 
-  let asLanguageServer: (string, Handle.t) => Promise.t<result<LSPClient.t, LSPClient.Error.t>>
+  let asLanguageServer: (string, string, Handle.t) => Promise.t<result<LSPClient.t, LSPClient.Error.t>>
 } = {
   let search = source =>
     switch source {
