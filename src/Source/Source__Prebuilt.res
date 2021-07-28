@@ -1,3 +1,5 @@
+module Unzip = Source__Prebuilt__Unzip
+
 module Nd = {
   module Fs = {
     @module("fs")
@@ -90,8 +92,7 @@ module Error = {
     | CannotDeleteFile(Js.Exn.t)
     | CannotRenameFile(Js.Exn.t)
     | CannotWriteFile(Js.Exn.t)
-    | CannotUnzipFileWithExn(Js.Exn.t)
-    | CannotUnzipFile
+    | CannotUnzipFile(Unzip.Error.t)
 
   let toString = x =>
     switch x {
@@ -107,8 +108,7 @@ module Error = {
     | CannotDeleteFile(exn) => "Failed to delete files:\n" ++ Util.JsError.toString(exn)
     | CannotRenameFile(exn) => "Failed to rename files:\n" ++ Util.JsError.toString(exn)
     | CannotWriteFile(exn) => "Failed to  write files:\n" ++ Util.JsError.toString(exn)
-    | CannotUnzipFileWithExn(exn) => "Failed to unzip files:\n" ++ Util.JsError.toString(exn)
-    | CannotUnzipFile => "Failed to unzip files"
+    | CannotUnzipFile(exn) => Unzip.Error.toString(exn)
     }
 }
 
@@ -141,72 +141,6 @@ module HTTP = {
         }
       // ok ?
       | _ => resolve(Ok(res))
-      }
-    })
-    promise
-  }
-}
-
-// module for unzipping downloaded files
-module Unzip = {
-  module Yauzl = {
-    module Entry = {
-      type t
-    }
-    module ZipFile = {
-      type t
-      @send
-      external openReadStream: (
-        t,
-        Entry.t,
-        (Js.null<Js.Exn.t>, option<NodeJs.Stream.Readable.t<NodeJs.Buffer.t>>) => unit,
-      ) => unit = "openReadStream"
-
-      @send
-      external onEntry: (t, @as("entry") _, Entry.t => unit) => unit = "on"
-    }
-
-    @module("yauzl")
-    external open_: (string, (Js.null<Js.Exn.t>, option<ZipFile.t>) => unit) => unit = "open"
-  }
-
-  let run = (src, dest) => {
-    let (promise, resolve) = Promise.pending()
-
-    // chmod 744 the executable
-    let fileStream = Nd.Fs.createWriteStreamWithOptions(dest, {"mode": 0o744})
-    // listens on "Error" and "Close"
-    fileStream
-    ->NodeJs.Fs.WriteStream.onError(exn => resolve(Error(Error.CannotUnzipFileWithExn(exn))))
-    ->ignore
-    fileStream
-    ->NodeJs.Fs.WriteStream.onClose(() => {
-      resolve(Ok())
-    })
-    ->ignore
-
-    // start unzipping the file
-    Yauzl.open_(src, (err, result) => {
-      switch Js.nullToOption(err) {
-      | Some(err) => resolve(Error(Error.CannotUnzipFileWithExn(err)))
-      | None =>
-        switch result {
-        | None => resolve(Error(CannotUnzipFile))
-        | Some(zipFile) =>
-          // We only expect *one* file inside each zip
-          zipFile->Yauzl.ZipFile.onEntry(entry => {
-            zipFile->Yauzl.ZipFile.openReadStream(entry, (err2, result2) => {
-              switch Js.nullToOption(err2) {
-              | Some(err2) => resolve(Error(Error.CannotUnzipFileWithExn(err2)))
-              | None =>
-                switch result2 {
-                | None => resolve(Error(CannotUnzipFile))
-                | Some(readStream) => readStream->NodeJs.Stream.Readable.pipe(fileStream)->ignore
-                }
-              }
-            })
-          })
-        }
       }
     })
     promise
@@ -384,7 +318,7 @@ module Module: {
     )
     // unzip the downloaded file
     ->Promise.flatMapOk(() => {
-      Unzip.run(metadata.destPath ++ ".zip", metadata.destPath)
+      Unzip.run(metadata.destPath ++ ".zip", metadata.destPath)->Promise.mapError(error => Error.CannotUnzipFile(error))
     })
     // remove the zip file
     ->Promise.flatMapOk(() =>
