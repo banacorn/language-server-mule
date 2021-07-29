@@ -252,7 +252,7 @@ module Module: {
 
   // in-flight download will be named as "in-flight.download"
   // see if "in-flight.download" already exists
-  let detectInFlightDownload = self => {
+  let isDownloading = self => {
     if Node.Fs.existsSync(self.globalStoragePath) {
       let inFlightDownloadPath = NodeJs.Path.join2(self.globalStoragePath, inFlightDownloadFileName)
       let fileNames = NodeJs.Fs.readdirSync(self.globalStoragePath)
@@ -350,9 +350,9 @@ module Module: {
   // }
 
   let get = self => {
-    if detectInFlightDownload(self) {
-      // let (promise, resolve) = Promise.pending()
-      // state := Some(InFlight(promise))
+    if isDownloading(self) {
+      Promise.resolved(Error(Error.Downloading))
+    } else {
       Release.getReleasesFromGitHub(self.username, self.repository, self.userAgent)
       ->Promise.mapOk(self.chooseFromReleases)
       ->Promise.flatMapOk(result =>
@@ -361,8 +361,6 @@ module Module: {
         | Some(target) => downloadLanguageServer(self, target)
         }
       )
-    } else {
-      Promise.resolved(Error(Error.Downloading))
     }
     // not initialized yet
     // switch checkExistingDownload(self.globalStoragePath, self.expectedVersion) {
