@@ -40,6 +40,8 @@ module Module: Module = {
     errorChan: Chan.t<Js.Exn.t>,
     requestChan: Chan.t<Js.Json.t>,
     notificationChan: Chan.t<Js.Json.t>,
+    // handle of the client itself
+    subscription: VSCode.Disposable.t,
   }
 
   let onError = self => callback =>
@@ -69,6 +71,7 @@ module Module: Module = {
     self.errorChan->Chan.destroy
     self.notificationChan->Chan.destroy
     self.requestChan->Chan.destroy
+    self.subscription->VSCode.Disposable.dispose->ignore
     self.client->LSP.LanguageClient.stop->Promise.Js.toResult->Promise.map(_ => ())
   }
 
@@ -129,7 +132,8 @@ module Module: Module = {
       handle: handle,
       errorChan: errorChan,
       notificationChan: Chan.make(),
-      requestChan: Chan.make()
+      requestChan: Chan.make(),
+      subscription: languageClient->LSP.LanguageClient.start,
     }
 
     // Let `LanguageClient.onReady` and `errorChan->Chan.once` race

@@ -12,7 +12,6 @@ describe("Process Interface", () => {
       let (promise, resolve) = Promise.pending()
 
       let handle = process->Process.onOutput(output => {
-        // Js.log(("OUTPUT", output))
         switch output {
         | Stdout("hello\n") => ()
         | Stdout("hello\r\n") => ()
@@ -62,7 +61,6 @@ describe("Process Interface", () => {
   //       // Assert.ok(sent)
 
   //       // process->Process.destroy->Promise.flatMap(_ => {
-  //       //   Js.log("destroyed")
   //       //   handle()
   //       //   promise
   //       // })
