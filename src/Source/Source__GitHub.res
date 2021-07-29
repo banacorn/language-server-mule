@@ -297,7 +297,7 @@ module Module: {
     })
     // remove the zip file
     ->Promise.flatMapOk(() =>
-      Nd.Fs.unlink(destPath ++ ".zip")->Promise.mapError(e => Error.CannotDeleteFile(e))
+      Nd.Fs.unlink(inFlightDownloadPath ++ ".zip")->Promise.mapError(e => Error.CannotDeleteFile(e))
     )
     // cleanup on error
     ->Promise.flatMap(result =>
@@ -311,8 +311,8 @@ module Module: {
           }
         }
         Promise.allArray([
-          remove(destPath ++ ".zip.download"),
-          remove(destPath ++ ".zip"),
+          remove(inFlightDownloadPath),
+          remove(inFlightDownloadPath ++ ".zip"),
         ])->Promise.map(_ => Error(error))
       | Ok() => Promise.resolved(Ok(destPath))
       }
