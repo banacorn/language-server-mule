@@ -236,7 +236,6 @@ module Module: {
     repository: string,
     userAgent: string,
     globalStoragePath: string,
-    expectedVersion: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
   }
   let get: t => Promise.t<result<string, Error.t>>
@@ -246,7 +245,6 @@ module Module: {
     repository: string,
     userAgent: string,
     globalStoragePath: string,
-    expectedVersion: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
   }
 

@@ -7,7 +7,7 @@ module Prebuilt = Source__Prebuilt
 type t =
   | FromStdIO(string) // name
   | FromTCP(int, string) // port, host
-  | FromGitHub(string, string, string, string, string) // username, reponame, user-agent, globalStoragePath, expecting version
+  | FromGitHub(Prebuilt.t)
 
 module Handle = {
   type t =
@@ -34,15 +34,8 @@ let search = source =>
     Port.probe(port, host)
     ->Promise.mapError(e => Error.TCP(e))
     ->Promise.mapOk(() => Handle.TCP(port, host))
-  | FromGitHub(username, repository, userAgent, globalStoragePath, expectedVersion) =>
-    Prebuilt.get({
-      username: username,
-      repository: repository,
-      userAgent: userAgent,
-      globalStoragePath: globalStoragePath,
-      expectedVersion: expectedVersion,
-      chooseFromReleases: _ => None
-    })
+  | FromGitHub(prebuilt) =>
+    Prebuilt.get(prebuilt)
     ->Promise.mapError(e => Error.Prebuilt(e))
     ->Promise.mapOk(path => Handle.Prebuilt(path))
   }
