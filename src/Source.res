@@ -1,43 +1,43 @@
 open Belt
 
 module Path = Source__Path
-module Port = Source__Port
-module Prebuilt = Source__Prebuilt
+module TCP = Source__TCP
+module GitHub = Source__GitHub
 
 type t =
-  | FromStdIO(string) // name
+  | FromPath(string) // name of the command
   | FromTCP(int, string) // port, host
-  | FromGitHub(Prebuilt.t)
-
-module Handle = {
-  type t =
-    | StdIO(string, string) // name, path
-    | TCP(int, string) // port, host
-    | Prebuilt(string) // path
-}
+  | FromGitHub(GitHub.t)
 
 module Error = {
   type t =
     | StdIO(Path.Error.t)
     | TCP(Js.Exn.t)
-    | Prebuilt(Prebuilt.Error.t)
+    | GitHub(GitHub.Error.t)
     | NoSourcesGiven
+
+  let toString = x => switch x {
+  | StdIO(e) => Path.Error.toString(e)
+  | TCP(e) => Util.JsError.toString(e)
+  | GitHub(e) => GitHub.Error.toString(e)
+  | NoSourcesGiven => "No source of IPC handle given"
+  }
 }
 
 let search = source =>
   switch source {
-  | FromStdIO(name) =>
+  | FromPath(name) =>
     Path.search(name)
     ->Promise.mapError(e => Error.StdIO(e))
-    ->Promise.mapOk(path => Handle.StdIO(name, path))
+    ->Promise.mapOk(path => Handle.ViaStdIO(path))
   | FromTCP(port, host) =>
-    Port.probe(port, host)
+    TCP.probe(port, host)
     ->Promise.mapError(e => Error.TCP(e))
-    ->Promise.mapOk(() => Handle.TCP(port, host))
+    ->Promise.mapOk(() => Handle.ViaTCP(port, host))
   | FromGitHub(prebuilt) =>
-    Prebuilt.get(prebuilt)
-    ->Promise.mapError(e => Error.Prebuilt(e))
-    ->Promise.mapOk(path => Handle.Prebuilt(path))
+    GitHub.get(prebuilt)
+    ->Promise.mapError(e => Error.GitHub(e))
+    ->Promise.mapOk(path => Handle.ViaStdIO(path))
   }
 
 let searchUntilSuccess = sources => {

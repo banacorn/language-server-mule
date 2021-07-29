@@ -16,7 +16,7 @@ module LSP = Client__LSP__Binding
 module type Module = {
   type t
   // lifecycle
-  let make: (string, string, Source.Handle.t) => Promise.t<result<t, Error.t>>
+  let make: (string, string, Handle.t) => Promise.t<result<t, Error.t>>
   let destroy: t => Promise.t<unit>
   // request / notification / error
   let sendRequest: (t, Js.Json.t) => Promise.t<result<Js.Json.t, Error.t>>
@@ -25,7 +25,7 @@ module type Module = {
   let onNotification: (t, Js.Json.t => unit) => VSCode.Disposable.t
   let onError: (t, Error.t => unit) => VSCode.Disposable.t
   // properties
-  let getHandle: t => Source.Handle.t
+  let getHandle: t => Handle.t
 }
 
 module Module: Module = {
@@ -35,7 +35,7 @@ module Module: Module = {
     client: LSP.LanguageClient.t,
     id: string, // language id, also for identifying custom methods
     name: string, // name for the language server client 
-    handle: Source.Handle.t,
+    handle: Handle.t,
     // event emitters
     errorChan: Chan.t<Js.Exn.t>,
     requestChan: Chan.t<Js.Json.t>,
@@ -77,9 +77,8 @@ module Module: Module = {
     let errorChan = Chan.make()
 
     let serverOptions = switch handle {
-    | Source.Handle.TCP(port, _host) => LSP.ServerOptions.makeWithStreamInfo(port, "localhost")
-    | StdIO(_name, path) => LSP.ServerOptions.makeWithCommand(path)
-    | Prebuilt(path) => LSP.ServerOptions.makeWithCommand(path)
+    | Handle.ViaTCP(port, _host) => LSP.ServerOptions.makeWithStreamInfo(port, "localhost")
+    | ViaStdIO(path) => LSP.ServerOptions.makeWithCommand(path)
     }
 
     let clientOptions = {

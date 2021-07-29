@@ -57,12 +57,12 @@ describe("Port Probing", () => {
         )
 
       promise
-      ->Promise.flatMap(() => Source.Port.probe(23456, "localhost"))
+      ->Promise.flatMap(() => Source.TCP.probe(23456, "localhost"))
       ->Promise.mapError(Util.JsError.toString)
       ->Promise.tap(_ => NodeJs.Net.TcpServer.close(tempServer, ~callback=_ => ())->ignore)
     })
     Q.it("should report Error on ports that are not available", () => {
-      Source.Port.probe(12345, "localhost")->Promise.map(result =>
+      Source.TCP.probe(12345, "localhost")->Promise.map(result =>
         switch result {
         | Error(_exn) => Ok()
         | Ok() => Error("Port should not be available")
