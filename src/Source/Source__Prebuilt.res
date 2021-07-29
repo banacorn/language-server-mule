@@ -63,13 +63,14 @@ module Nd = {
 
 module Error = {
   type t =
+    | Downloading
     // parsing
     | ResponseParseError(string)
     | ResponseDecodeError(string, Js.Json.t)
     // network
     | CannotDownload(Download.Error.t)
     //
-    | NoMatchingVersion(string)
+    | NoMatchingRelease
     | NotSupportedOS(string)
     // file system
     | CannotDeleteFile(Js.Exn.t)
@@ -78,12 +79,13 @@ module Error = {
 
   let toString = x =>
     switch x {
+    | Downloading => "Already downloading"
     | ResponseParseError(raw) => "Cannot parse release metadata from GitHub:\n" ++ raw
     | ResponseDecodeError(msg, _) => "Cannot decode release metadata JSON from GitHub:\n" ++ msg
     // network
     | CannotDownload(error) => Download.Error.toString(error)
     // metadata
-    | NoMatchingVersion(version) => "Cannot find " ++ version ++ " in releases from GitHub"
+    | NoMatchingRelease => "Cannot matching release from GitHub"
     | NotSupportedOS(os) => "Cannot find prebuilt for " ++ os
     // file system
     | CannotDeleteFile(exn) => "Failed to delete files:\n" ++ Util.JsError.toString(exn)
@@ -147,63 +149,86 @@ module Release = {
   }
 }
 
-module Metadata = {
+module Target = {
   type t = {
     srcUrl: string,
-    destPath: string,
-    version: string,
-  }
-
-  let getCurrentVersion = (username, repository, userAgent, globalStoragePath, version) => {
-    let getCurrentRelease = (releases: array<Release.t>) => {
-      open Belt
-      let matched = releases->Array.keep(release => release.tagName == version)
-      switch matched[0] {
-      | None => Promise.resolved(Error(Error.NoMatchingVersion(version)))
-      | Some(release) => Promise.resolved(Ok(release))
-      }
-    }
-
-    let toDestPath = (globalStoragePath, release: Release.t, asset: Asset.t) => {
-      // take the "macos" part from names like "gcl-macos.zip"
-      let osName = Js.String2.slice(asset.name, ~from=4, ~to_=-4)
-      // the final path to store the language server
-      Node_path.join2(globalStoragePath, "gcl-" ++ release.tagName ++ "-" ++ osName)
-    }
-
-    let getCurrentAsset = (release: Release.t) => {
-      open Belt
-      // expected asset name
-      let os = Node_process.process["platform"]
-      let expectedName = switch os {
-      | "darwin" => Ok("gcl-macos.zip")
-      | "linux" => Ok("gcl-ubuntu.zip")
-      | "win32" => Ok("gcl-windows.zip")
-      | others => Error(Error.NotSupportedOS(others))
-      }
-
-      // find the corresponding asset
-      expectedName
-      ->Result.flatMap(name => {
-        let matched = release.assets->Array.keep(asset => asset.name == name)
-        switch matched[0] {
-        | None => Error(Error.NotSupportedOS(os))
-        | Some(asset) =>
-          Ok({
-            srcUrl: asset.url,
-            destPath: toDestPath(globalStoragePath, release, asset),
-            version: release.tagName,
-          })
-        }
-      })
-      ->Promise.resolved
-    }
-
-    Release.getReleasesFromGitHub(username, repository, userAgent)
-    ->Promise.flatMapOk(getCurrentRelease)
-    ->Promise.flatMapOk(getCurrentAsset)
+    fileName: string,
   }
 }
+
+// module Metadata = {
+//   type t = {
+//     srcUrl: string,
+//     fileName: string
+//   }
+
+//   let getCurrentVersion = (
+//     username,
+//     repository,
+//     userAgent,
+//     globalStoragePath,
+//     chooseFromReleases: array<Release.t> => option<t>,
+//   ): Promise.t<result<option<t>, Error.t>> => {
+//     // let getCurrentRelease = (releases: array<Release.t>) => {
+//     //   open Belt
+//     //   let matched = releases->Array.keep(release => release.tagName == version)
+//     //   switch matched[0] {
+//     //   | None => Promise.resolved(Error(Error.NoMatchingRelease))
+//     //   | Some(release) => Promise.resolved(Ok(release))
+//     //   }
+//     // }
+
+//     // let toDestPath = (globalStoragePath, release: Release.t, asset: Asset.t) => {
+//     //   // take the "macos" part from names like "gcl-macos.zip"
+//     //   let osName = Js.String2.slice(asset.name, ~from=4, ~to_=-4)
+//     //   // the final path to store the language server
+//     //   Node_path.join2(globalStoragePath, "gcl-" ++ release.tagName ++ "-" ++ osName)
+//     // }
+
+//     // let getCurrentAsset = (release: Release.t) => {
+//     //   open Belt
+//     //   // expected asset name
+//     //   let os = Node_process.process["platform"]
+//     //   let expectedName = switch os {
+//     //   | "darwin" => Ok("gcl-macos.zip")
+//     //   | "linux" => Ok("gcl-ubuntu.zip")
+//     //   | "win32" => Ok("gcl-windows.zip")
+//     //   | others => Error(Error.NotSupportedOS(others))
+//     //   }
+
+//     //   // find the corresponding asset
+//     //   expectedName
+//     //   ->Result.flatMap(name => {
+//     //     let matched = release.assets->Array.keep(asset => asset.name == name)
+//     //     switch matched[0] {
+//     //     | None => Error(Error.NotSupportedOS(os))
+//     //     | Some(asset) =>
+//     //       Ok({
+//     //         srcUrl: asset.url,
+//     //         destPath: toDestPath(globalStoragePath, release, asset),
+//     //         version: release.tagName,
+//     //       })
+//     //     }
+//     //   })
+//     //   ->Promise.resolved
+//     // }
+
+//     Release.getReleasesFromGitHub(username, repository, userAgent)
+//     ->Promise.mapOk(chooseFromReleases)
+//     ->Promise.mapOk(x =>
+//       switch x {
+//       | None => None
+//       | Some((release, asset)) => Some({
+//             srcUrl: asset.url,
+//             destPath: toDestPath(globalStoragePath, release, asset),
+//             version: release.tagName,
+//           })
+//       }
+//     )
+//   }
+// }
+
+open Belt 
 
 module Module: {
   type t = {
@@ -212,7 +237,7 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     expectedVersion: string,
-    chooseFromReleases: array<Release.t> => option<Asset.t>,
+    chooseFromReleases: array<Release.t> => option<Target.t>,
   }
   let get: t => Promise.t<result<string, Error.t>>
 } = {
@@ -222,14 +247,30 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     expectedVersion: string,
-    chooseFromReleases: array<Release.t> => option<Asset.t>,
+    chooseFromReleases: array<Release.t> => option<Target.t>,
   }
-  type state =
-    | Downloaded(string)
-    | InFlight(Promise.t<result<string, Error.t>>)
 
-  let download = (srcUrl, destPath) => {
-    let url = Nd.Url.parse(srcUrl)
+  let inFlightDownloadFileName = "in-flight.download"
+
+  // in-flight download will be named as "in-flight.download"
+  // see if "in-flight.download" already exists
+  let detectInFlightDownload = self => {
+    if Node.Fs.existsSync(self.globalStoragePath) {
+      let inFlightDownloadPath = NodeJs.Path.join2(self.globalStoragePath, inFlightDownloadFileName)
+      let fileNames = NodeJs.Fs.readdirSync(self.globalStoragePath)
+      let matched = fileNames->Array.keep(fileName => fileName == inFlightDownloadPath)
+      matched[0]->Option.isSome
+    } else {
+      // create a directory for `context.globalStoragePath` if it doesn't exist
+      Nd.Fs.mkdirSync(self.globalStoragePath)
+      false
+    }
+  }
+
+  let downloadLanguageServer = (self, target: Target.t) => {
+    // suffix with ".download" whilst downloading
+
+    let url = Nd.Url.parse(target.srcUrl)
     let httpOptions = {
       "host": url["host"],
       "path": url["path"],
@@ -238,29 +279,27 @@ module Module: {
       },
     }
 
-    Download.asFile(httpOptions, destPath)->Promise.mapError(e => Error.CannotDownload(e))
-  }
+    let inFlightDownloadPath = NodeJs.Path.join2(self.globalStoragePath, inFlightDownloadFileName)
+    let destPath = Node_path.join2(self.globalStoragePath, target.fileName)
 
-  let downloadLanguageServer = (metadata: Metadata.t) => {
-    // suffix with ".download" whilst downloading
-    download(metadata.srcUrl, metadata.destPath ++ ".zip.download")
-    // remove the ".download" suffix after download
+    Download.asFile(httpOptions, inFlightDownloadPath)
+    ->Promise.mapError(e => Error.CannotDownload(e))
+    // suffix with ".zip" after downloaded
     ->Promise.flatMapOk(() =>
       Nd.Fs.rename(
-        metadata.destPath ++ ".zip.download",
-        metadata.destPath ++ ".zip",
+        inFlightDownloadPath,
+        inFlightDownloadPath ++ ".zip",
       )->Promise.mapError(e => Error.CannotRenameFile(e))
     )
     // unzip the downloaded file
     ->Promise.flatMapOk(() => {
-      Unzip.run(
-        metadata.destPath ++ ".zip",
-        metadata.destPath,
-      )->Promise.mapError(error => Error.CannotUnzipFile(error))
+      Unzip.run(inFlightDownloadPath ++ ".zip", destPath)->Promise.mapError(error => Error.CannotUnzipFile(
+        error,
+      ))
     })
     // remove the zip file
     ->Promise.flatMapOk(() =>
-      Nd.Fs.unlink(metadata.destPath ++ ".zip")->Promise.mapError(e => Error.CannotDeleteFile(e))
+      Nd.Fs.unlink(destPath ++ ".zip")->Promise.mapError(e => Error.CannotDeleteFile(e))
     )
     // cleanup on error
     ->Promise.flatMap(result =>
@@ -274,72 +313,82 @@ module Module: {
           }
         }
         Promise.allArray([
-          remove(metadata.destPath ++ ".zip.download"),
-          remove(metadata.destPath ++ ".zip"),
+          remove(destPath ++ ".zip.download"),
+          remove(destPath ++ ".zip"),
         ])->Promise.map(_ => Error(error))
-      | Ok() => Promise.resolved(Ok(metadata.destPath))
+      | Ok() => Promise.resolved(Ok(destPath))
       }
     )
   }
 
-  let checkExistingDownload = (globalStoragePath, version) => {
-    // create a directory for `context.globalStoragePath` if it doesn't exist
-    if !Node.Fs.existsSync(globalStoragePath) {
-      Nd.Fs.mkdirSync(globalStoragePath)
-    }
+  // let checkExistingDownload = (globalStoragePath, version) => {
+  //   // create a directory for `context.globalStoragePath` if it doesn't exist
+  //   if !Node.Fs.existsSync(globalStoragePath) {
+  //     Nd.Fs.mkdirSync(globalStoragePath)
+  //   }
 
-    // devise the expected file name of the language server and see if the OS is supported
-    let getExpectedFileName = {
-      switch Node_process.process["platform"] {
-      | "darwin" => Ok("gcl-" ++ version ++ "-macos")
-      | "linux" => Ok("gcl-" ++ version ++ "-ubuntu")
-      | "win32" => Ok("gcl-" ++ version ++ "-windows")
-      | others => Error(Error.NotSupportedOS(others))
-      }
-    }
+  //   // devise the expected file name of the language server and see if the OS is supported
+  //   let getExpectedFileName = {
+  //     switch Node_process.process["platform"] {
+  //     | "darwin" => Ok("gcl-" ++ version ++ "-macos")
+  //     | "linux" => Ok("gcl-" ++ version ++ "-ubuntu")
+  //     | "win32" => Ok("gcl-" ++ version ++ "-windows")
+  //     | others => Error(Error.NotSupportedOS(others))
+  //     }
+  //   }
 
-    getExpectedFileName->Belt.Result.map(expected => {
-      // find the current asset from `context.globalStoragePath`
-      let fileNames = NodeJs.Fs.readdirSync(globalStoragePath)
-      let downloaded = fileNames->Js.Array2.some(actual => expected == actual)
+  //   getExpectedFileName->Belt.Result.map(expected => {
+  //     // find the current asset from `context.globalStoragePath`
+  //     let fileNames = NodeJs.Fs.readdirSync(globalStoragePath)
+  //     let downloaded = fileNames->Js.Array2.some(actual => expected == actual)
 
-      if downloaded {
-        let path = NodeJs.Path.join2(globalStoragePath, expected)
-        Some(path)
-      } else {
-        None
-      }
-    })
-  }
-
-  let state: ref<option<state>> = ref(None)
+  //     if downloaded {
+  //       let path = NodeJs.Path.join2(globalStoragePath, expected)
+  //       Some(path)
+  //     } else {
+  //       None
+  //     }
+  //   })
+  // }
 
   let get = self => {
-    switch state.contents {
-    | None =>
-      // not initialized yet
-      switch checkExistingDownload(self.globalStoragePath, self.expectedVersion) {
-      | Ok(None) =>
-        let (promise, resolve) = Promise.pending()
-        state := Some(InFlight(promise))
-        Metadata.getCurrentVersion(
-          self.username,
-          self.repository,
-          self.repository,
-          self.globalStoragePath,
-          self.expectedVersion,
-        )
-        ->Promise.flatMapOk(downloadLanguageServer)
-        ->Promise.tap(resolve)
-      | Ok(Some(path)) =>
-        state := Some(Downloaded(path))
-        Promise.resolved(Ok(path))
-      | Error(error) => Promise.resolved(Error(error))
-      }
-    | Some(Downloaded(path)) => Promise.resolved(Ok(path))
-    // returns a promise that will be resolved once the download's been completed
-    | Some(InFlight(promise)) => promise
+    if detectInFlightDownload(self) {
+      // let (promise, resolve) = Promise.pending()
+      // state := Some(InFlight(promise))
+      Release.getReleasesFromGitHub(self.username, self.repository, self.userAgent)
+      ->Promise.mapOk(self.chooseFromReleases)
+      ->Promise.flatMapOk(result =>
+        switch result {
+        | None => Promise.resolved(Error(Error.NoMatchingRelease))
+        | Some(target) => downloadLanguageServer(self, target)
+        }
+      )
+    } else {
+      Promise.resolved(Error(Error.Downloading))
     }
+    // not initialized yet
+    // switch checkExistingDownload(self.globalStoragePath, self.expectedVersion) {
+    // | Ok(None) =>
+    //   let (promise, resolve) = Promise.pending()
+    //   state := Some(InFlight(promise))
+    //   Release.getReleasesFromGitHub(self.username, self.repository, self.userAgent)
+    //   ->Promise.mapOk(self.chooseFromReleases)
+    //   ->Promise.flatMapOk(result =>
+    //     switch result {
+    //     | None => Promise.resolved(Error(Error.NoMatchingRelease))
+    //     | Some(target) => downloadLanguageServer(self.globalStoragePath, target)
+    //     }
+    //   )
+    //   ->Promise.tap(resolve)
+    // | Ok(Some(path)) =>
+    //   state := Some(Downloaded(path))
+    //   Promise.resolved(Ok(path))
+    // | Error(error) => Promise.resolved(Error(error))
+    // }
+    // | Some(Downloaded(path)) => Promise.resolved(Ok(path))
+    // // returns a promise that will be resolved once the download's been completed
+    // | Some(InFlight(promise)) => promise
+    // }
   }
 }
 
