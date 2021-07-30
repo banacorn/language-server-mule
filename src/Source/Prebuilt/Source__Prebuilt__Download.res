@@ -44,7 +44,7 @@ module Module: {
     promise
   }
 
-  // with HTTP 301/302 redirect handled
+  // with HTTP 301/302 redirect methodd
   let getWithRedirects = options => {
     let (promise, resolve) = Promise.pending()
 

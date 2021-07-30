@@ -1,4 +1,4 @@
-// Means of Inter-process communication
+// Method of Inter-process communication
 type t =
   | ViaStdIO(string) // path
   | ViaTCP(int, string) // port, host

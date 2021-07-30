@@ -11,7 +11,7 @@ describe("Process Interface", () => {
       let process = Process.make("echo", ["hello"])
       let (promise, resolve) = Promise.pending()
 
-      let handle = process->Process.onOutput(output => {
+      let method = process->Process.onOutput(output => {
         switch output {
         | Stdout("hello\n") => ()
         | Stdout("hello\r\n") => ()
@@ -21,7 +21,7 @@ describe("Process Interface", () => {
         | Event(event) => resolve(Error("Event: " ++ Process.Event.toString(event)))
         }
       })
-      promise->Promise.tap(_ => handle())
+      promise->Promise.tap(_ => method())
     })
   })
   describe("Use a non-existing command as the testing subject", () => {
@@ -29,14 +29,14 @@ describe("Process Interface", () => {
       let process = Process.make("echooo", ["hello"])
       let (promise, resolve) = Promise.pending()
 
-      let handle = process->Process.onOutput(output => {
+      let method = process->Process.onOutput(output => {
         switch output {
         | Stdout(output) => resolve(Error("wrong output: " ++ output))
         | Stderr(_) => resolve(Ok())
         | Event(event) => resolve(Error("Event: " ++ Process.Event.toString(event)))
         }
       })
-      promise->Promise.tap(_ => handle())
+      promise->Promise.tap(_ => method())
     })
   })
 
@@ -48,7 +48,7 @@ describe("Process Interface", () => {
   //       let process = Process.make("path", [])
   //       let (promise, resolve) = Promise.pending()
 
-  //       let handle = process->Process.onOutput(output =>
+  //       let method = process->Process.onOutput(output =>
   //         switch output {
   //         | Stdout("2") => resolve(Ok())
   //         | Stdout(_) => resolve(Error("wrong answer"))
@@ -61,11 +61,11 @@ describe("Process Interface", () => {
   //       // Assert.ok(sent)
 
   //       // process->Process.destroy->Promise.flatMap(_ => {
-  //       //   handle()
+  //       //   method()
   //       //   promise
   //       // })
 
-  //       promise->Promise.tap(_ => handle())
+  //       promise->Promise.tap(_ => method())
   //     })
   //   })
   // })
