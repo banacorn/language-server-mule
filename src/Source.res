@@ -4,7 +4,10 @@ module Path = Source__Path
 module TCP = Source__TCP
 module GitHub = Source__GitHub
 
-include Method.Source
+type t =
+  | FromPath(string) // name of the command
+  | FromTCP(int, string) // port, host
+  | FromGitHub(Source__GitHub.t)
 
 module Error = {
   type t =
@@ -32,15 +35,15 @@ module Module: {
     | FromPath(name) =>
       Path.search(name)
       ->Promise.mapError(e => Error.StdIO(e))
-      ->Promise.mapOk(path => Method.ViaStdIO(source, path))
+      ->Promise.mapOk(path => Method.ViaStdIO(path, FromPath(name)))
     | FromTCP(port, host) =>
       TCP.probe(port, host)
       ->Promise.mapError(e => Error.TCP(e))
-      ->Promise.mapOk(() => Method.ViaTCP(source, port, host))
+      ->Promise.mapOk(() => Method.ViaTCP(port, host, FromTCP(port, host)))
     | FromGitHub(prebuilt) =>
       GitHub.get(prebuilt)
       ->Promise.mapError(e => Error.GitHub(e))
-      ->Promise.mapOk(path => Method.ViaStdIO(source, path))
+      ->Promise.mapOk(((path, target)) => Method.ViaStdIO(path, FromGitHub(prebuilt, target.release, target.asset)))
     }
 
   let searchUntilSuccess = sources => {

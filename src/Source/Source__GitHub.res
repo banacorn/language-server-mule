@@ -151,6 +151,8 @@ module Release = {
 
 module Target = {
   type t = {
+    release: Release.t,
+    asset: Asset.t,
     srcUrl: string,
     fileName: string,
   }
@@ -238,7 +240,7 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
   }
-  let get: t => Promise.t<result<string, Error.t>>
+  let get: t => Promise.t<result<(string, Target.t), Error.t>>
 } = {
   type t = {
     username: string,
@@ -314,7 +316,7 @@ module Module: {
           remove(inFlightDownloadPath),
           remove(inFlightDownloadPath ++ ".zip"),
         ])->Promise.map(_ => Error(error))
-      | Ok() => Promise.resolved(Ok(destPath))
+      | Ok() => Promise.resolved(Ok((destPath, target)))
       }
     )
   }
