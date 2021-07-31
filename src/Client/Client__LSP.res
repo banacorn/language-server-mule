@@ -18,7 +18,7 @@ module LSP = Client__LSP__Binding
 module type Module = {
   type t
   // lifecycle
-  let make: (string, string, Source.t, Method.t) => Promise.t<result<t, Js.Exn.t>>
+  let make: (string, string, Method.t) => Promise.t<result<t, Js.Exn.t>>
   let destroy: t => Promise.t<unit>
   // request / notification / error
   let sendRequest: (t, Js.Json.t) => Promise.t<result<Js.Json.t, Js.Exn.t>>
@@ -30,7 +30,7 @@ module type Module = {
   let getNotificationChan: t => Chan.t<Js.Json.t>
   let getErrorChan: t => Chan.t<Js.Exn.t>
   // properties
-  let getSourceAndMethod: t => (Source.t, Method.t)
+  let getMethod: t => Method.t
 }
 
 module Module: Module = {
@@ -40,7 +40,7 @@ module Module: Module = {
     client: LSP.LanguageClient.t,
     id: string, // language id, also for identifying custom methods
     name: string, // name for the language server client
-    sourceAndMethod: (Source.t, Method.t),
+    method: Method.t,
     // event emitters
     errorChan: Chan.t<Js.Exn.t>,
     notificationChan: Chan.t<Js.Json.t>,
@@ -80,7 +80,7 @@ module Module: Module = {
     self.client->LSP.LanguageClient.stop->Promise.Js.toResult->Promise.map(_ => ())
   }
 
-  let make = (id, name, source, method) => {
+  let make = (id, name, method) => {
     let errorChan = Chan.make()
 
     let serverOptions = switch method {
@@ -128,7 +128,7 @@ module Module: Module = {
       client: languageClient,
       id: id,
       name: name,
-      sourceAndMethod: (source, method),
+      method: method,
       errorChan: errorChan,
       notificationChan: Chan.make(),
       subscription: languageClient->LSP.LanguageClient.start,
@@ -147,7 +147,7 @@ module Module: Module = {
     })
   }
 
-  let getSourceAndMethod = conn => conn.sourceAndMethod
+  let getMethod = conn => conn.method
 }
 
 include Module
