@@ -4,8 +4,7 @@ module Path = Source__Path
 module TCP = Source__TCP
 module GitHub = Source__GitHub
 
-open Method.Source
-type t = Method.Source.t
+include Method.Source
 
 module Error = {
   type t =
