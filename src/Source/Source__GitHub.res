@@ -268,8 +268,6 @@ module Module: {
   }
 
   let downloadLanguageServer = (self, target: Target.t) => {
-    // suffix with ".download" whilst downloading
-
     let url = Nd.Url.parse(target.srcUrl)
     let httpOptions = {
       "host": url["host"],
@@ -321,36 +319,6 @@ module Module: {
     )
   }
 
-  // let checkExistingDownload = (globalStoragePath, version) => {
-  //   // create a directory for `context.globalStoragePath` if it doesn't exist
-  //   if !Node.Fs.existsSync(globalStoragePath) {
-  //     Nd.Fs.mkdirSync(globalStoragePath)
-  //   }
-
-  //   // devise the expected file name of the language server and see if the OS is supported
-  //   let getExpectedFileName = {
-  //     switch Node_process.process["platform"] {
-  //     | "darwin" => Ok("gcl-" ++ version ++ "-macos")
-  //     | "linux" => Ok("gcl-" ++ version ++ "-ubuntu")
-  //     | "win32" => Ok("gcl-" ++ version ++ "-windows")
-  //     | others => Error(Error.NotSupportedOS(others))
-  //     }
-  //   }
-
-  //   getExpectedFileName->Belt.Result.map(expected => {
-  //     // find the current asset from `context.globalStoragePath`
-  //     let fileNames = NodeJs.Fs.readdirSync(globalStoragePath)
-  //     let downloaded = fileNames->Js.Array2.some(actual => expected == actual)
-
-  //     if downloaded {
-  //       let path = NodeJs.Path.join2(globalStoragePath, expected)
-  //       Some(path)
-  //     } else {
-  //       None
-  //     }
-  //   })
-  // }
-
   let get = self => {
     if isDownloading(self) {
       Promise.resolved(Error(Error.Downloading))
@@ -360,33 +328,20 @@ module Module: {
       ->Promise.flatMapOk(result =>
         switch result {
         | None => Promise.resolved(Error(Error.NoMatchingRelease))
-        | Some(target) => downloadLanguageServer(self, target)
+        | Some(target) => 
+            // don't download from GitHub if `target.fileName` already exists 
+            let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
+            if NodeJs.Fs.existsSync(destPath) {
+              Js.log("[ mule ] Used cached program")
+              Promise.resolved(Ok((destPath, target )))
+            } else {
+              Js.log("[ mule ] Download from GitHub")
+              downloadLanguageServer(self, target)
+            }
+        
         }
       )
     }
-    // not initialized yet
-    // switch checkExistingDownload(self.globalStoragePath, self.expectedVersion) {
-    // | Ok(None) =>
-    //   let (promise, resolve) = Promise.pending()
-    //   state := Some(InFlight(promise))
-    //   Release.getReleasesFromGitHub(self.username, self.repository, self.userAgent)
-    //   ->Promise.mapOk(self.chooseFromReleases)
-    //   ->Promise.flatMapOk(result =>
-    //     switch result {
-    //     | None => Promise.resolved(Error(Error.NoMatchingRelease))
-    //     | Some(target) => downloadLanguageServer(self.globalStoragePath, target)
-    //     }
-    //   )
-    //   ->Promise.tap(resolve)
-    // | Ok(Some(path)) =>
-    //   state := Some(Downloaded(path))
-    //   Promise.resolved(Ok(path))
-    // | Error(error) => Promise.resolved(Error(error))
-    // }
-    // | Some(Downloaded(path)) => Promise.resolved(Ok(path))
-    // // returns a promise that will be resolved once the download's been completed
-    // | Some(InFlight(promise)) => promise
-    // }
   }
 }
 
