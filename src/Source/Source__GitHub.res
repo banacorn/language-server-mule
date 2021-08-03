@@ -1,5 +1,5 @@
-module Unzip = Source__Prebuilt__Unzip
-module Download = Source__Prebuilt__Download
+module Unzip = Source__GitHub__Unzip
+module Download = Source__GitHub__Download
 
 module Nd = {
   module Fs = {
@@ -63,15 +63,12 @@ module Nd = {
 
 module Error = {
   type t =
-    | Downloading
     // parsing
-    | ResponseParseError(string)
     | ResponseDecodeError(string, Js.Json.t)
-    // network
-    | CannotDownload(Download.Error.t)
-    //
     | NoMatchingRelease
-    | NotSupportedOS(string)
+    // download
+    | AlreadyDownloading
+    | CannotDownload(Download.Error.t)
     // file system
     | CannotDeleteFile(Js.Exn.t)
     | CannotRenameFile(Js.Exn.t)
@@ -79,14 +76,12 @@ module Error = {
 
   let toString = x =>
     switch x {
-    | Downloading => "Already downloading"
-    | ResponseParseError(raw) => "Cannot parse release metadata from GitHub:\n" ++ raw
+    | AlreadyDownloading => "Already downloading"
     | ResponseDecodeError(msg, _) => "Cannot decode release metadata JSON from GitHub:\n" ++ msg
     // network
     | CannotDownload(error) => Download.Error.toString(error)
     // metadata
     | NoMatchingRelease => "Cannot matching release from GitHub"
-    | NotSupportedOS(os) => "Cannot find prebuilt for " ++ os
     // file system
     | CannotDeleteFile(exn) => "Failed to delete files:\n" ++ Util.JsError.toString(exn)
     | CannotRenameFile(exn) => "Failed to rename files:\n" ++ Util.JsError.toString(exn)
@@ -157,78 +152,6 @@ module Target = {
     fileName: string,
   }
 }
-
-// module Metadata = {
-//   type t = {
-//     srcUrl: string,
-//     fileName: string
-//   }
-
-//   let getCurrentVersion = (
-//     username,
-//     repository,
-//     userAgent,
-//     globalStoragePath,
-//     chooseFromReleases: array<Release.t> => option<t>,
-//   ): Promise.t<result<option<t>, Error.t>> => {
-//     // let getCurrentRelease = (releases: array<Release.t>) => {
-//     //   open Belt
-//     //   let matched = releases->Array.keep(release => release.tagName == version)
-//     //   switch matched[0] {
-//     //   | None => Promise.resolved(Error(Error.NoMatchingRelease))
-//     //   | Some(release) => Promise.resolved(Ok(release))
-//     //   }
-//     // }
-
-//     // let toDestPath = (globalStoragePath, release: Release.t, asset: Asset.t) => {
-//     //   // take the "macos" part from names like "gcl-macos.zip"
-//     //   let osName = Js.String2.slice(asset.name, ~from=4, ~to_=-4)
-//     //   // the final path to store the language server
-//     //   Node_path.join2(globalStoragePath, "gcl-" ++ release.tagName ++ "-" ++ osName)
-//     // }
-
-//     // let getCurrentAsset = (release: Release.t) => {
-//     //   open Belt
-//     //   // expected asset name
-//     //   let os = Node_process.process["platform"]
-//     //   let expectedName = switch os {
-//     //   | "darwin" => Ok("gcl-macos.zip")
-//     //   | "linux" => Ok("gcl-ubuntu.zip")
-//     //   | "win32" => Ok("gcl-windows.zip")
-//     //   | others => Error(Error.NotSupportedOS(others))
-//     //   }
-
-//     //   // find the corresponding asset
-//     //   expectedName
-//     //   ->Result.flatMap(name => {
-//     //     let matched = release.assets->Array.keep(asset => asset.name == name)
-//     //     switch matched[0] {
-//     //     | None => Error(Error.NotSupportedOS(os))
-//     //     | Some(asset) =>
-//     //       Ok({
-//     //         srcUrl: asset.url,
-//     //         destPath: toDestPath(globalStoragePath, release, asset),
-//     //         version: release.tagName,
-//     //       })
-//     //     }
-//     //   })
-//     //   ->Promise.resolved
-//     // }
-
-//     Release.getReleasesFromGitHub(username, repository, userAgent)
-//     ->Promise.mapOk(chooseFromReleases)
-//     ->Promise.mapOk(x =>
-//       switch x {
-//       | None => None
-//       | Some((release, asset)) => Some({
-//             srcUrl: asset.url,
-//             destPath: toDestPath(globalStoragePath, release, asset),
-//             version: release.tagName,
-//           })
-//       }
-//     )
-//   }
-// }
 
 open Belt 
 
@@ -321,7 +244,7 @@ module Module: {
 
   let get = self => {
     if isDownloading(self) {
-      Promise.resolved(Error(Error.Downloading))
+      Promise.resolved(Error(Error.AlreadyDownloading))
     } else {
       Release.getReleasesFromGitHub(self.username, self.repository, self.userAgent)
       ->Promise.mapOk(self.chooseFromReleases)
