@@ -47,6 +47,20 @@ module Nd = {
     }
 
     @module("fs")
+    external writeFile_raw: (string, NodeJs.Buffer.t, Js.null<Js.Exn.t> => unit) => unit =
+      "writeFile"
+    let writeFile = (path, data) => {
+      let (promise, resolve) = Promise.pending()
+      writeFile_raw(path, data, error => {
+        switch Js.nullToOption(error) {
+        | None => resolve(Ok())
+        | Some(error) => resolve(Error(error))
+        }
+      })
+      promise
+    }
+
+    @module("fs")
     external createWriteStream: string => NodeJs.Fs.WriteStream.t = "createWriteStream"
 
     @module("fs")
@@ -63,28 +77,36 @@ module Nd = {
 
 module Error = {
   type t =
-    // parsing
     | ResponseDecodeError(string, Js.Json.t)
+    | JsonParseError(string)
     | NoMatchingRelease
     // download
     | AlreadyDownloading
     | CannotDownload(Download.Error.t)
+    // cacheing
+    | CannotCacheReleases(Js.Exn.t)
     // file system
+    | CannotStatFile(string)
+    | CannotReadFile(Js.Exn.t)
     | CannotDeleteFile(Js.Exn.t)
     | CannotRenameFile(Js.Exn.t)
     | CannotUnzipFile(Unzip.Error.t)
 
   let toString = x =>
     switch x {
-    | AlreadyDownloading => "Already downloading"
     | ResponseDecodeError(msg, _) => "Cannot decode release metadata JSON from GitHub:\n" ++ msg
-    // network
-    | CannotDownload(error) => Download.Error.toString(error)
-    // metadata
+    | JsonParseError(raw) => "Cannot parse string as JSON:\n" ++ raw
     | NoMatchingRelease => "Cannot matching release from GitHub"
+    // download
+    | CannotDownload(error) => Download.Error.toString(error)
+    | AlreadyDownloading => "Already downloading"
+    // cacheing
+    | CannotCacheReleases(exn) => "Failed to cache releases:\n" ++ Util.JsError.toString(exn)
     // file system
-    | CannotDeleteFile(exn) => "Failed to delete files:\n" ++ Util.JsError.toString(exn)
-    | CannotRenameFile(exn) => "Failed to rename files:\n" ++ Util.JsError.toString(exn)
+    | CannotStatFile(path) => "Cannot stat file \"" ++ path ++ "\""
+    | CannotReadFile(exn) => "Cannot to read files:\n" ++ Util.JsError.toString(exn)
+    | CannotDeleteFile(exn) => "Cannot to delete files:\n" ++ Util.JsError.toString(exn)
+    | CannotRenameFile(exn) => "Cannot to rename files:\n" ++ Util.JsError.toString(exn)
     | CannotUnzipFile(error) => Unzip.Error.toString(error)
     }
 }
@@ -102,6 +124,11 @@ module Asset = {
       name: json |> field("name", string),
     }
   }
+
+  let encode = asset => {
+    open Json.Encode
+    object_(list{("browser_download_url", asset.url |> string), ("name", asset.name |> string)})
+  }
 }
 
 module Release = {
@@ -118,30 +145,20 @@ module Release = {
     }
   }
 
+  let encode = release => {
+    open Json.Encode
+    object_(list{
+      ("tag_name", release.tagName |> string),
+      ("assets", release.assets |> array(Asset.encode)),
+    })
+  }
+
   let parseReleases = json =>
     try {
       Ok(json |> Json.Decode.array(decode))
     } catch {
     | Json.Decode.DecodeError(e) => Error(Error.ResponseDecodeError(e, json))
     }
-
-  // NOTE: no caching
-  let getReleasesFromGitHub = (username, repository, userAgent) => {
-    let httpOptions = {
-      "host": "api.github.com",
-      "path": "/repos/" ++ username ++ "/" ++ repository ++ "/releases",
-      "headers": {
-        "User-Agent": userAgent,
-      },
-    }
-
-    Download.asJson(httpOptions)->Promise.map(result =>
-      switch result {
-      | Error(e) => Error(Error.CannotDownload(e))
-      | Ok(json) => parseReleases(json)
-      }
-    )
-  }
 }
 
 module Target = {
@@ -153,7 +170,7 @@ module Target = {
   }
 }
 
-open Belt 
+open Belt
 
 module Module: {
   type t = {
@@ -162,6 +179,7 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
+    cacheInvalidateExpirationSecs: int,
   }
   let get: t => Promise.t<result<(string, Target.t), Error.t>>
 } = {
@@ -171,6 +189,7 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
+    cacheInvalidateExpirationSecs: int,
   }
 
   let inFlightDownloadFileName = "in-flight.download"
@@ -214,9 +233,10 @@ module Module: {
     )
     // unzip the downloaded file
     ->Promise.flatMapOk(() => {
-      Unzip.run(inFlightDownloadPath ++ ".zip", destPath)->Promise.mapError(error => Error.CannotUnzipFile(
-        error,
-      ))
+      Unzip.run(
+        inFlightDownloadPath ++ ".zip",
+        destPath,
+      )->Promise.mapError(error => Error.CannotUnzipFile(error))
     })
     // remove the zip file
     ->Promise.flatMapOk(() =>
@@ -242,26 +262,99 @@ module Module: {
     )
   }
 
+  // NOTE: no caching
+  let getReleasesFromGitHub = self => {
+    let httpOptions = {
+      "host": "api.github.com",
+      "path": "/repos/" ++ self.username ++ "/" ++ self.repository ++ "/releases",
+      "headers": {
+        "User-Agent": self.userAgent,
+      },
+    }
+
+    Download.asJson(httpOptions)->Promise.map(result =>
+      switch result {
+      | Error(e) => Error(Error.CannotDownload(e))
+      | Ok(json) => Release.parseReleases(json)
+      }
+    )
+  }
+
+  let persistAsFile = (self, releases) => {
+    let json =
+      Json_encode.array(Release.encode, releases)->Js_json.stringify->NodeJs.Buffer.fromString
+    let path = NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
+    Nd.Fs.writeFile(path, json)->Promise.map(result =>
+      switch result {
+      | Error(e) => Error(Error.CannotCacheReleases(e))
+      | Ok() => Ok(releases) // pass it on for chaining
+      }
+    )
+  }
+
+  // use cached releases instead of fetching them from GitHub, if the cached releases data is not too old (24 hrs)
+  let getReleases = self => {
+    let path = NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
+
+    // get stat modify time in ms
+    let statModifyTime = path =>
+      NodeJs.Fs.lstat(path)
+      ->Promise.Js.fromBsPromise
+      ->Promise.Js.toResult
+      ->Promise.mapError(_ => Error.CannotStatFile(path))
+      ->Promise.mapOk(stat => stat.mtimeMs)
+
+    statModifyTime(path)->Promise.flatMapOk(lastModifiedTime => {
+      let currentTime = Js.Date.now()
+      let timeDiffSecs = int_of_float((currentTime -. lastModifiedTime) /. 1000.0)
+
+      if timeDiffSecs > self.cacheInvalidateExpirationSecs {
+        // the cached releases data is too old
+        Js.log("[ mule ] gitHub releases cache invalidated")
+        getReleasesFromGitHub(self)->Promise.flatMapOk(persistAsFile(self))
+      } else {
+        Js.log("[ mule ] Use cached releases data")
+        // use the cached releases data
+        Nd.Fs.readFile(path)
+        ->Promise.mapError(e => Error.CannotRenameFile(e))
+        // decode file as json
+        ->Promise.flatMapOk(buffer => {
+          let string = NodeJs.Buffer.toString(buffer)
+          try {
+            Promise.resolved(Ok(Js.Json.parseExn(string)))
+          } catch {
+          | _ => Promise.resolved(Error(Error.JsonParseError(string)))
+          }
+        })
+        // parse the json
+        ->Promise.flatMapOk(json => {
+          switch Release.parseReleases(json) {
+          | Error(e) => Promise.resolved(Error(e))
+          | Ok(releases) => Promise.resolved(Ok(releases))
+          }
+        })
+      }
+    })
+  }
   let get = self => {
     if isDownloading(self) {
       Promise.resolved(Error(Error.AlreadyDownloading))
     } else {
-      Release.getReleasesFromGitHub(self.username, self.repository, self.userAgent)
+      getReleases(self)
       ->Promise.mapOk(self.chooseFromReleases)
       ->Promise.flatMapOk(result =>
         switch result {
         | None => Promise.resolved(Error(Error.NoMatchingRelease))
-        | Some(target) => 
-            // don't download from GitHub if `target.fileName` already exists 
-            let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
-            if NodeJs.Fs.existsSync(destPath) {
-              Js.log("[ mule ] Used cached program")
-              Promise.resolved(Ok((destPath, target )))
-            } else {
-              Js.log("[ mule ] Download from GitHub")
-              downloadLanguageServer(self, target)
-            }
-        
+        | Some(target) =>
+          // don't download from GitHub if `target.fileName` already exists
+          let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
+          if NodeJs.Fs.existsSync(destPath) {
+            Js.log("[ mule ] Used downloaded program")
+            Promise.resolved(Ok((destPath, target)))
+          } else {
+            Js.log("[ mule ] Download from GitHub instead")
+            downloadLanguageServer(self, target)
+          }
         }
       )
     }
