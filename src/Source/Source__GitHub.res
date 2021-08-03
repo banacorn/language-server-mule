@@ -180,6 +180,7 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     cacheInvalidateExpirationSecs: int,
+    cacheID: string,
   }
   let get: t => Promise.t<result<(string, Target.t), Error.t>>
 } = {
@@ -190,6 +191,7 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     cacheInvalidateExpirationSecs: int,
+    cacheID: string,
   }
 
   let inFlightDownloadFileName = "in-flight.download"
@@ -280,23 +282,8 @@ module Module: {
     )
   }
 
-  let persistAsFile = (self, releases) => {
-    let json =
-      Json_encode.array(Release.encode, releases)->Js_json.stringify->NodeJs.Buffer.fromString
-    let path = NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
-    Nd.Fs.writeFile(path, json)->Promise.map(result =>
-      switch result {
-      | Error(e) => Error(Error.CannotCacheReleases(e))
-      | Ok() => Ok(releases) // pass it on for chaining
-      }
-    )
-  }
-
-  // use cached releases instead of fetching them from GitHub, if the cached releases data is not too old (24 hrs)
-  let getReleases = self => {
-    let path = NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
-
-    // get stat modify time in ms
+  module Cache = {
+    // util for getting stat modify time in ms
     let statModifyTime = path =>
       NodeJs.Fs.lstat(path)
       ->Promise.Js.fromBsPromise
@@ -304,15 +291,49 @@ module Module: {
       ->Promise.mapError(_ => Error.CannotStatFile(path))
       ->Promise.mapOk(stat => stat.mtimeMs)
 
-    statModifyTime(path)->Promise.flatMapOk(lastModifiedTime => {
-      let currentTime = Js.Date.now()
-      let timeDiffSecs = int_of_float((currentTime -. lastModifiedTime) /. 1000.0)
+    let cachePath = self =>
+      NodeJs.Path.join2(self.globalStoragePath, "releases-cache-" ++ self.cacheID ++ ".json")
 
-      if timeDiffSecs > self.cacheInvalidateExpirationSecs {
-        // the cached releases data is too old
-        Js.log("[ mule ] gitHub releases cache invalidated")
-        getReleasesFromGitHub(self)->Promise.flatMapOk(persistAsFile(self))
+    let isValid = self => {
+      let path = cachePath(self)
+
+      if NodeJs.Fs.existsSync(path) {
+        statModifyTime(path)->Promise.map(result =>
+          switch result {
+          | Error(_) => false // invalidate when there's an error
+          | Ok(lastModifiedTime) =>
+            let currentTime = Js.Date.now()
+            // devise time difference in seconds
+            let diff = int_of_float((currentTime -. lastModifiedTime) /. 1000.0)
+            // cache is invalid if it is too old
+            diff > self.cacheInvalidateExpirationSecs
+          }
+        )
       } else {
+        // the cache does not exist, hence not valid
+        Promise.resolved(false)
+      }
+    }
+
+    let persist = (self, releases) => {
+      let json =
+        Json_encode.array(Release.encode, releases)->Js_json.stringify->NodeJs.Buffer.fromString
+      let path = cachePath(self)
+      Nd.Fs.writeFile(path, json)->Promise.map(result =>
+        switch result {
+        | Error(e) => Error(Error.CannotCacheReleases(e))
+        | Ok() => Ok(releases) // pass it on for chaining
+        }
+      )
+    }
+  }
+
+  // use cached releases instead of fetching them from GitHub, if the cached releases data is not too old (24 hrs)
+  let getReleases = self => {
+    let path = Cache.cachePath(self)
+
+    Cache.isValid(self)->Promise.flatMap(isValid =>
+      if isValid {
         Js.log("[ mule ] Use cached releases data")
         // use the cached releases data
         Nd.Fs.readFile(path)
@@ -333,9 +354,13 @@ module Module: {
           | Ok(releases) => Promise.resolved(Ok(releases))
           }
         })
+      } else {
+        Js.log("[ mule ] GitHub releases cache invalidated")
+        getReleasesFromGitHub(self)->Promise.flatMapOk(Cache.persist(self))
       }
-    })
+    )
   }
+
   let get = self => {
     if isDownloading(self) {
       Promise.resolved(Error(Error.AlreadyDownloading))
