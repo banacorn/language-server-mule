@@ -300,13 +300,14 @@ module Module: {
       if NodeJs.Fs.existsSync(path) {
         statModifyTime(path)->Promise.map(result =>
           switch result {
-          | Error(_) => false // invalidate when there's an error
+          | Error(e) =>
+            false // invalidate when there's an error
           | Ok(lastModifiedTime) =>
             let currentTime = Js.Date.now()
             // devise time difference in seconds
             let diff = int_of_float((currentTime -. lastModifiedTime) /. 1000.0)
             // cache is invalid if it is too old
-            diff > self.cacheInvalidateExpirationSecs
+            diff < self.cacheInvalidateExpirationSecs
           }
         )
       } else {
