@@ -19,7 +19,7 @@ module Error = {
   let toString = x =>
     switch x {
     | StdIO(e) => Path.Error.toString(e)
-    | TCP(e) => Util.JsError.toString(e)
+    | TCP(e) => "Cannot connect with the server (" ++ Util.JsError.toString(e) ++ ")"
     | GitHub(e) => GitHub.Error.toString(e)
     | NoSourcesGiven => "No source of IPC method given"
     }

@@ -1,18 +1,3 @@
-// module Error = {
-//   type t =
-//     // connection
-//     // | ConnectionError(Js.Exn.t)
-//     | CannotSendRequest(Js.Exn.t)
-//     | CannotSendNotification(Js.Exn.t)
-
-//   let toString = x =>
-//     switch x {
-//     // | ConnectionError(exn) => "Connection error: " ++ Util.JsError.toString(exn)
-//     | CannotSendRequest(exn) => "Cannot send request: " ++ Util.JsError.toString(exn)
-//     | CannotSendNotification(exn) => "Cannot send notification: " ++ Util.JsError.toString(exn)
-//     }
-// }
-
 module LSP = Client__LSP__Binding
 
 module type Module = {
