@@ -300,7 +300,7 @@ module Module: {
       if NodeJs.Fs.existsSync(path) {
         statModifyTime(path)->Promise.map(result =>
           switch result {
-          | Error(e) =>
+          | Error(_) =>
             false // invalidate when there's an error
           | Ok(lastModifiedTime) =>
             let currentTime = Js.Date.now()

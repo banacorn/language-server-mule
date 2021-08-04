@@ -27,7 +27,7 @@ module Error = {
 
 module Module: {
   let search: t => Promise.t<result<Method.t, Error.t>>
-  let searchUntilSuccess: array<t> => Promise.t<result<Method.t, Error.t>>
+  let searchUntilSuccess: array<t> => Promise.t<(option<Method.t>, array<Error.t>)>
 } = {
   // returns the method of IPC if successful
   let search = source =>
@@ -43,23 +43,36 @@ module Module: {
     | FromGitHub(prebuilt) =>
       GitHub.get(prebuilt)
       ->Promise.mapError(e => Error.GitHub(e))
-      ->Promise.mapOk(((path, target)) => Method.ViaStdIO(path, FromGitHub(prebuilt, target.release, target.asset)))
+      ->Promise.mapOk(((path, target)) => Method.ViaStdIO(
+        path,
+        FromGitHub(prebuilt, target.release, target.asset),
+      ))
     }
 
   let searchUntilSuccess = sources => {
-    let rec tryUntilSuccess = input =>
+    let rec tryUntilSuccess = (accumErrors: list<Error.t>, input) =>
       switch input {
-      | list{} => Promise.resolved(Error(Error.NoSourcesGiven))
-      | list{x} => search(x)->Promise.mapOk(method => method)
+      | list{} => Promise.resolved((None, list{Error.NoSourcesGiven}))
+      | list{x} =>
+        search(x)->Promise.map(result =>
+          switch result {
+          | Error(e) => (None, list{e})
+          | Ok(v) => (Some(v), list{})
+          }
+        )
       | list{x, ...xs} =>
         search(x)->Promise.flatMap(result =>
           switch result {
-          | Error(_) => tryUntilSuccess(xs)
-          | Ok(client) => Promise.resolved(Ok(client))
+          | Error(e) =>
+            tryUntilSuccess(accumErrors, xs)->Promise.map(((v, es)) => (v, list{e, ...es}))
+          | Ok(v) => Promise.resolved((Some(v), accumErrors))
           }
         )
       }
-    sources->List.fromArray->tryUntilSuccess
+    tryUntilSuccess(list{}, sources->List.fromArray)->Promise.map(((client, errors)) => (
+      client,
+      List.toArray(errors),
+    ))
   }
 }
 
