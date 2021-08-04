@@ -40,12 +40,12 @@ module Module: {
       TCP.probe(port, host)
       ->Promise.mapError(e => Error.TCP(e))
       ->Promise.mapOk(() => Method.ViaTCP(port, host, FromTCP(port, host)))
-    | FromGitHub(prebuilt) =>
-      GitHub.get(prebuilt)
+    | FromGitHub(info) =>
+      GitHub.get(info)
       ->Promise.mapError(e => Error.GitHub(e))
       ->Promise.mapOk(((path, target)) => Method.ViaStdIO(
         path,
-        FromGitHub(prebuilt, target.release, target.asset),
+        FromGitHub(info, target.release, target.asset),
       ))
     }
 

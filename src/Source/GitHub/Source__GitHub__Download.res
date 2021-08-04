@@ -1,3 +1,4 @@
+open Belt
 module Https = {
   @module("https")
   external get: (
@@ -21,7 +22,32 @@ module Error = {
     | NoRedirectLocation => "Got HTTP 301/302 from GitHub without location in headers"
     | ServerResponseError(exn) => "Server response error:\n" ++ Util.JsError.toString(exn)
     | JsonParseError(raw) => "Cannot parse downloaded file as JSON:\n" ++ raw
-    | CannotWriteFile(exn) => "Failed to write downloaded content to files:\n" ++ Util.JsError.toString(exn)
+    | CannotWriteFile(exn) =>
+      "Failed to write downloaded content to files:\n" ++ Util.JsError.toString(exn)
+    }
+}
+
+module Event = {
+  type t =
+    | Start
+    | Progress(int, int)
+    | Finish
+
+  let toString = event =>
+    switch event {
+    | Start => "Start downloading"
+    | Progress(accum, total) =>
+      // if the file is larger than 10MB than we use MB as the unit
+      total > 10485760
+        ? "Downloading ( " ++
+          string_of_int(accum / 1048576) ++
+          " MB / " ++
+          string_of_int(total / 1048576) ++ " MB )"
+        : "Downloading ( " ++
+          string_of_int(accum / 1024) ++
+          " KB / " ++
+          string_of_int(total / 1024) ++ " MB )"
+    | Finish => "Finish downloading"
     }
 }
 
@@ -32,6 +58,7 @@ module Module: {
   let asFile: (
     {"headers": {"User-Agent": string}, "host": string, "path": string},
     string,
+    Event.t => unit,
   ) => Promise.t<result<unit, Error.t>>
 } = {
   let gatherDataFromResponse = res => {
@@ -79,15 +106,40 @@ module Module: {
       }
     )
 
-  let asFile = (httpOptions, destPath) =>
+  let asFile = (httpOptions, destPath, onDownload) =>
     getWithRedirects(httpOptions)->Promise.flatMapOk(res => {
+      onDownload(Event.Start)
+      // calculate and report download progress
+      let totalSize =
+        NodeJs.Http.IncomingMessage.headers(res).contentLenth->Option.mapWithDefault(
+          0,
+          int_of_string,
+        )
+      let accumSize = ref(0)
+      res
+      ->NodeJs.Http.IncomingMessage.onData(chunk => {
+        let chunkSize = NodeJs.Buffer.length(chunk)
+        accumSize := accumSize.contents + chunkSize
+        onDownload(Event.Progress(accumSize.contents, totalSize))
+      })
+      ->ignore
+
+      // pipe the response to a file
       let (promise, resolve) = Promise.pending()
       let fileStream = NodeJs.Fs.createWriteStream(destPath)
       fileStream
       ->NodeJs.Fs.WriteStream.onError(exn => resolve(Error(Error.CannotWriteFile(exn))))
       ->ignore
-      fileStream->NodeJs.Fs.WriteStream.onClose(() => resolve(Ok()))->ignore
+      fileStream
+      ->NodeJs.Fs.WriteStream.onClose(() => {
+        // report Event.Finish
+        onDownload(Finish)
+        // resolve the promise
+        resolve(Ok())
+      })
+      ->ignore
       res->NodeJs.Http.IncomingMessage.pipe(fileStream)->ignore
+
       promise
     })
 }

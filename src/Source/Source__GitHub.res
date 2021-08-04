@@ -96,7 +96,7 @@ module Error = {
     switch x {
     | ResponseDecodeError(msg, _) => "Cannot decode release metadata JSON from GitHub:\n" ++ msg
     | JsonParseError(raw) => "Cannot parse string as JSON:\n" ++ raw
-    | NoMatchingRelease => "Cannot matching release from GitHub"
+    | NoMatchingRelease => "Cannot find matching release from GitHub"
     // download
     | CannotDownload(error) => Download.Error.toString(error)
     | AlreadyDownloading => "Already downloading"
@@ -179,6 +179,7 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
+    onDownload: Download.Event.t => unit,
     cacheInvalidateExpirationSecs: int,
     cacheID: string,
   }
@@ -190,6 +191,7 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
+    onDownload: Download.Event.t => unit,
     cacheInvalidateExpirationSecs: int,
     cacheID: string,
   }
@@ -224,7 +226,7 @@ module Module: {
     let inFlightDownloadPath = NodeJs.Path.join2(self.globalStoragePath, inFlightDownloadFileName)
     let destPath = Node_path.join2(self.globalStoragePath, target.fileName)
 
-    Download.asFile(httpOptions, inFlightDownloadPath)
+    Download.asFile(httpOptions, inFlightDownloadPath, self.onDownload)
     ->Promise.mapError(e => Error.CannotDownload(e))
     // suffix with ".zip" after downloaded
     ->Promise.flatMapOk(() =>
