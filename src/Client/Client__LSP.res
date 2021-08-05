@@ -44,8 +44,8 @@ module Module: Module = {
     self.client
     ->LSP.LanguageClient.onReady
     ->Promise.Js.toResult
-    ->Promise.mapOk(() => {
-      self.client->LSP.LanguageClient.sendNotification(self.id, data)
+    ->Promise.flatMapOk(() => {
+      self.client->LSP.LanguageClient.sendNotification(self.id, data)->Promise.Js.toResult
     })
 
   let sendRequest = (self, data) =>

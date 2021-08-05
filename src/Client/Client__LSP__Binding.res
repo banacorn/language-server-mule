@@ -166,7 +166,7 @@ module LanguageClient = {
   @send
   external onNotification: (t, string, 'a => unit) => unit = "onNotification"
   @send
-  external sendNotification: (t, string, 'a) => unit = "sendNotification"
+  external sendNotification: (t, string, 'a) =>  Promise.Js.t<unit, _> = "sendNotification"
   @send
   external sendRequest: (t, string, Js.Json.t) => Promise.Js.t<'result, _> = "sendRequest"
   @send
