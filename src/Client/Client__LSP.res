@@ -7,7 +7,7 @@ module type Module = {
   let destroy: t => Promise.t<unit>
   // request / notification / error
   let sendRequest: (t, Js.Json.t) => Promise.t<result<Js.Json.t, Js.Exn.t>>
-  let onRequest: (t, Js.Json.t => Promise.t<result<Js.Json.t, Js.Exn.t>>) => unit
+  let onRequest: (t, Js.Json.t => Promise.t<result<Js.Json.t, Js.Exn.t>>) => VSCode.Disposable.t
   let sendNotification: (t, Js.Json.t) => Promise.promise<result<unit, Js.Exn.t>>
   let onNotification: (t, Js.Json.t => unit) => VSCode.Disposable.t
   let onError: (t, Js.Exn.t => unit) => VSCode.Disposable.t
@@ -56,7 +56,8 @@ module Module: Module = {
       self.client->LSP.LanguageClient.sendRequest(self.id, data)->Promise.Js.toResult
     })
 
-  let onRequest = (self, callback) => self.client->LSP.LanguageClient.onRequest(self.id, callback)
+  let onRequest = (self, callback) =>
+    self.client->LSP.LanguageClient.onRequest(self.id, callback)->VSCode.Disposable.make
 
   let destroy = self => {
     self.errorChan->Chan.destroy

@@ -170,5 +170,5 @@ module LanguageClient = {
   @send
   external sendRequest: (t, string, Js.Json.t) => Promise.Js.t<'result, _> = "sendRequest"
   @send
-  external onRequest: (t, string, 'a => Promise.Js.t<'result, _>) => unit = "onRequest"
+  external onRequest: (t, string, 'a => Promise.Js.t<'result, _>, unit) => unit = "onRequest"
 }
