@@ -164,11 +164,12 @@ module LanguageClient = {
   @send external stop: t => Promise.Js.t<unit, _> = "stop"
   @send external onReady: t => Promise.Js.t<unit, _> = "onReady"
   @send
-  external onNotification: (t, string, 'a => unit) => unit = "onNotification"
+  external onNotification: (t, string, 'a) => @uncurry (unit => unit) = "onNotification"
   @send
-  external sendNotification: (t, string, 'a) =>  Promise.Js.t<unit, _> = "sendNotification"
+  external sendNotification: (t, string, 'a) => Promise.Js.t<unit, _> = "sendNotification"
   @send
   external sendRequest: (t, string, Js.Json.t) => Promise.Js.t<'result, _> = "sendRequest"
   @send
-  external onRequest: (t, string, 'a => Promise.Js.t<'result, _>, unit) => unit = "onRequest"
+  external onRequest: (t, string, 'a => Promise.Js.t<'result, _>) => @uncurry (unit => unit) =
+    "onRequest"
 }

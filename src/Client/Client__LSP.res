@@ -29,8 +29,8 @@ module Module: Module = {
     // event emitters
     errorChan: Chan.t<Js.Exn.t>,
     notificationChan: Chan.t<Js.Json.t>,
-    // method of the client itself
-    subscription: VSCode.Disposable.t,
+    // handles of listeners
+    subscriptions: array<VSCode.Disposable.t>,
   }
 
   let onError = (self, callback) =>
@@ -62,7 +62,7 @@ module Module: Module = {
   let destroy = self => {
     self.errorChan->Chan.destroy
     self.notificationChan->Chan.destroy
-    self.subscription->VSCode.Disposable.dispose->ignore
+    self.subscriptions->Belt.Array.forEach(VSCode.Disposable.dispose)->ignore
     self.client->LSP.LanguageClient.stop->Promise.Js.toResult->Promise.map(_ => ())
   }
 
@@ -117,7 +117,7 @@ module Module: Module = {
       method: method,
       errorChan: errorChan,
       notificationChan: Chan.make(),
-      subscription: languageClient->LSP.LanguageClient.start,
+      subscriptions: [languageClient->LSP.LanguageClient.start],
     }
 
     // Let `LanguageClient.onReady` and `errorChan->Chan.once` race
@@ -128,7 +128,7 @@ module Module: Module = {
       // start listening for incoming notifications
       self.client->LSP.LanguageClient.onNotification(self.id, json => {
         self.notificationChan->Chan.emit(json)
-      })
+      })->VSCode.Disposable.make->Js.Array.push(self.subscriptions)->ignore
       self
     })
   }
