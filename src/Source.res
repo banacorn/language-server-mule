@@ -1,24 +1,29 @@
 open Belt
 
-module Path = Source__Path
+module Command = Source__Command
+module File = Source__File
 module TCP = Source__TCP
 module GitHub = Source__GitHub
 
 type t =
-  | FromPath(string) // name of the command
+  | FromFile(string) // path of the program 
+  | FromCommand(string) // name of the command
   | FromTCP(int, string) // port, host
   | FromGitHub(Source__GitHub.t)
 
+// error from the sources
 module Error = {
   type t =
-    | StdIO(Path.Error.t)
+    | File(string)
+    | Command(Command.Error.t)
     | TCP(Js.Exn.t)
     | GitHub(GitHub.Error.t)
     | NoSourcesGiven
 
   let toString = x =>
     switch x {
-    | StdIO(e) => Path.Error.toString(e)
+    | File(e) => "File does not exist: " ++ e
+    | Command(e) => Command.Error.toString(e)
     | TCP(e) => "Cannot connect with the server (" ++ Util.JsError.toString(e) ++ ")"
     | GitHub(e) => GitHub.Error.toString(e)
     | NoSourcesGiven => "No source of IPC method given"
@@ -32,9 +37,15 @@ module Module: {
   // returns the method of IPC if successful
   let search = source =>
     switch source {
-    | FromPath(name) =>
-      Path.search(name)
-      ->Promise.mapError(e => Error.StdIO(e))
+    | FromFile(path) =>
+      if File.probe(path) {
+        Promise.resolved(Ok(Method.ViaStdIO(path, FromCommand(path))))
+      } else {
+        Promise.resolved(Error(Error.File(path)))
+      }
+    | FromCommand(name) =>
+      Command.search(name)
+      ->Promise.mapError(e => Error.Command(e))
       ->Promise.mapOk(path => Method.ViaStdIO(path, FromPath(name)))
     | FromTCP(port, host) =>
       TCP.probe(port, host)

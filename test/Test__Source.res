@@ -4,9 +4,9 @@ module Assert = BsMocha.Assert
 open Test__Util
 
 describe("Path Searching", () => {
-  describe("`Source.Path.whichCommand`", () => {
+  describe("`Source.Command.whichCommand`", () => {
     Q.it("should work on itself", () => {
-      switch Source.Path.whichCommand {
+      switch Source.Command.whichCommand {
       | Error(os) => Promise.resolved(Error(os))
       | Ok(command) =>
         let (promise, resolve) = Promise.pending()
@@ -25,18 +25,18 @@ describe("Path Searching", () => {
       }
     })
   })
-  describe("`Source.Path.run`", () => {
+  describe("`Source.Command.search`", () => {
     Q.it("should report commands that do exist", () => {
-      Source.Path.search("npm")->Promise.mapError(err =>
-        Js.Exn.raiseError(Source.Path.Error.toString(err))
+      Source.Command.search("npm")->Promise.mapError(err =>
+        Js.Exn.raiseError(Source.Command.Error.toString(err))
       )
     })
 
     Q.it("should report `NotFound` on commands that don't exist", () => {
-      Source.Path.search("somenonexistingprogram")->Promise.map(result =>
+      Source.Command.search("somenonexistingprogram")->Promise.map(result =>
         switch result {
         | Error(NotFound) => Ok()
-        | Error(err) => Error(Js.Exn.raiseError(Source.Path.Error.toString(err)))
+        | Error(err) => Error(Js.Exn.raiseError(Source.Command.Error.toString(err)))
         | Ok(result) => Error(Js.Exn.raiseError(result))
         }
       )
