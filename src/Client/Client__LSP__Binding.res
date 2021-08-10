@@ -168,7 +168,11 @@ module LanguageClient = {
   external make: (string, string, ServerOptions.t, LanguageClientOptions.t) => t = "LanguageClient"
   // methods
   @send external start: t => Disposable.t = "start"
-  @send external stop: t => Promise.Js.t<unit, _> = "stop"
+
+  // strange quirk 
+  @send external stop_raw: t => Promise.Js.t<unit, _> = "stop"
+  let stop: t => Promise.Js.t<unit, _> = %raw("self => stop_raw(self)")
+
   @send external onReady: t => Promise.Js.t<unit, _> = "onReady"
   @send
   external onNotification: (t, string, 'a) => Disposable.t = "onNotification"

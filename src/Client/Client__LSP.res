@@ -63,7 +63,7 @@ module Module: Module = {
     self.errorChan->Chan.destroy
     self.notificationChan->Chan.destroy
     self.subscriptions->Belt.Array.forEach(VSCode.Disposable.dispose)->ignore
-    self.client->LSP.LanguageClient.stop->Promise.Js.toResult->Promise.map(_ => ())
+    LSP.LanguageClient.stop(self.client)->Promise.Js.toResult->Promise.map(_ => ())
   }
 
   let make = (id, name, method) => {
