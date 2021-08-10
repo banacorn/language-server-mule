@@ -57,7 +57,7 @@ module Module: Module = {
     })
 
   let onRequest = (self, callback) =>
-    self.client->LSP.LanguageClient.onRequest(self.id, callback)->VSCode.Disposable.make
+    self.client->LSP.LanguageClient.onRequest(self.id, callback)->LSP.Disposable.toVSCodeDisposable
 
   let destroy = self => {
     self.errorChan->Chan.destroy
@@ -117,7 +117,7 @@ module Module: Module = {
       method: method,
       errorChan: errorChan,
       notificationChan: Chan.make(),
-      subscriptions: [languageClient->LSP.LanguageClient.start],
+      subscriptions: [languageClient->LSP.LanguageClient.start->LSP.Disposable.toVSCodeDisposable],
     }
 
     // Let `LanguageClient.onReady` and `errorChan->Chan.once` race
@@ -126,9 +126,13 @@ module Module: Module = {
       errorChan->Chan.once->Promise.map(err => Error(err)),
     })->Promise.mapOk(() => {
       // start listening for incoming notifications
-      self.client->LSP.LanguageClient.onNotification(self.id, json => {
+      self.client
+      ->LSP.LanguageClient.onNotification(self.id, json => {
         self.notificationChan->Chan.emit(json)
-      })->VSCode.Disposable.make->Js.Array.push(self.subscriptions)->ignore
+      })
+      ->LSP.Disposable.toVSCodeDisposable
+      ->Js.Array.push(self.subscriptions)
+      ->ignore
       self
     })
   }
