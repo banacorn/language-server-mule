@@ -275,7 +275,7 @@ module Module: {
         "User-Agent": self.userAgent,
       },
     }
-
+    
     Download.asJson(httpOptions)->Promise.map(result =>
       switch result {
       | Error(e) => Error(Error.CannotDownload(e))
@@ -302,8 +302,7 @@ module Module: {
       if NodeJs.Fs.existsSync(path) {
         statModifyTime(path)->Promise.map(result =>
           switch result {
-          | Error(_) =>
-            false // invalidate when there's an error
+          | Error(_) => false // invalidate when there's an error
           | Ok(lastModifiedTime) =>
             let currentTime = Js.Date.now()
             // devise time difference in seconds
