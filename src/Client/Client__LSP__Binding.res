@@ -169,10 +169,21 @@ module LanguageClient = {
   // methods
   @send external start: t => Disposable.t = "start"
 
-  // strange quirk 
-  @send external stop_raw: t => Promise.Js.t<unit, _> = "stop"
-  let stop: t => Promise.Js.t<unit, _> = %raw("self => stop_raw(self)")
+  // `LSP.LanguageClientOptions.stop` hangs
+  // Hence the 100ms timeout
+  @send external stop_raw: t => Js.Promise.t<unit> = "stop"
+  let stop: t => Promise.t<unit> = self => {
+    let (promise, resolve) = Promise.pending()
 
+    // 200ms timeout
+    Js.Global.setTimeout(() => {
+      resolve()
+    }, 100)->ignore
+
+    stop_raw(self)->Promise.Js.fromBsPromise->Promise.Js.toResult->Promise.get(_ => resolve())
+
+    promise
+  }
   @send external onReady: t => Promise.Js.t<unit, _> = "onReady"
   @send
   external onNotification: (t, string, 'a) => Disposable.t = "onNotification"
