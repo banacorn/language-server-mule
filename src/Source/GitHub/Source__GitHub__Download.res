@@ -22,7 +22,8 @@ module Error = {
     switch x {
     | ServerResponseError(exn) => "Server response error:\n" ++ Util.JsError.toString(exn)
     | NoRedirectLocation => "Got HTTP 301/302 from GitHub without location in headers"
-    | Timeout(time) => "Timeout after " ++ string_of_int(time) ++ "ms. Please check your internet connection"
+    | Timeout(time) =>
+      "Timeout after " ++ string_of_int(time) ++ "ms. Please check your internet connection"
     | JsonParseError(raw) => "Cannot parse downloaded file as JSON:\n" ++ raw
     | CannotWriteFile(exn) =>
       "Failed to write downloaded content to files:\n" ++ Util.JsError.toString(exn)
@@ -62,6 +63,8 @@ module Module: {
     string,
     Event.t => unit,
   ) => Promise.t<result<unit, Error.t>>
+
+  let timeoutAfter: (Promise.t<result<'a, Error.t>>, int) => Promise.t<result<'a, Error.t>>
 } = {
   let gatherDataFromResponseStream = res => {
     open NodeJs.Http.IncomingMessage
@@ -74,12 +77,8 @@ module Module: {
   }
 
   // with HTTP 301/302 redirect
-  // and 500ms timeout 
   let getWithRedirects = options => {
     let (promise, resolve) = Promise.pending()
-
-    let timeout = 500
-    Js.Global.setTimeout(() => resolve(Error(Error.Timeout(timeout))), timeout)->ignore
 
     Https.get(options, res => {
       // check the response status code first
@@ -101,7 +100,14 @@ module Module: {
     promise
   }
 
-  let asJson = httpOptions => {
+  // helper combinator for timeout
+  let timeoutAfter = (p, n) => {
+    let (promise, resolve) = Promise.pending()
+    Js.Global.setTimeout(() => resolve(Error(Error.Timeout(n))), n)->ignore
+    Promise.race(list{promise, p})
+  }
+
+  let asJson = httpOptions =>
     getWithRedirects(httpOptions)
     ->Promise.flatMapOk(gatherDataFromResponseStream)
     ->Promise.flatMapOk(raw =>
@@ -111,7 +117,6 @@ module Module: {
       | _ => Promise.resolved(Error(Error.JsonParseError(raw)))
       }
     )
-  }
 
   let asFile = (httpOptions, destPath, onDownload) =>
     getWithRedirects(httpOptions)->Promise.flatMapOk(res => {

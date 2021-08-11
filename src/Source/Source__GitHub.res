@@ -267,6 +267,7 @@ module Module: {
   }
 
   // NOTE: no caching
+  // timeouts after 1000ms
   let getReleasesFromGitHub = self => {
     let httpOptions = {
       "host": "api.github.com",
@@ -275,8 +276,10 @@ module Module: {
         "User-Agent": self.userAgent,
       },
     }
-    
-    Download.asJson(httpOptions)->Promise.map(result =>
+
+    Download.asJson(httpOptions)
+    ->Download.timeoutAfter(1000)
+    ->Promise.map(result =>
       switch result {
       | Error(e) => Error(Error.CannotDownload(e))
       | Ok(json) => Release.parseReleases(json)
