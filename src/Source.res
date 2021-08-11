@@ -6,7 +6,7 @@ module TCP = Source__TCP
 module GitHub = Source__GitHub
 
 type t =
-  | FromFile(string) // path of the program 
+  | FromFile(string) // path of the program
   | FromCommand(string) // name of the command
   | FromTCP(int, string) // port, host
   | FromGitHub(Source__GitHub.t)
@@ -14,25 +14,33 @@ type t =
 // error from the sources
 module Error = {
   type t =
-    | File(string)
-    | Command(Command.Error.t)
-    | TCP(Js.Exn.t)
+    | File(string) // path of the program
+    | Command(string, Command.Error.t) // name of the command, error
+    | TCP(int, string, Js.Exn.t) // port, host, error
     | GitHub(GitHub.Error.t)
-    | NoSourcesGiven
 
-  let toString = x =>
-    switch x {
-    | File(e) => "File does not exist: " ++ e
-    | Command(e) => Command.Error.toString(e)
-    | TCP(e) => "Cannot connect with the server (" ++ Util.JsError.toString(e) ++ ")"
-    | GitHub(e) => GitHub.Error.toString(e)
-    | NoSourcesGiven => "No source of IPC method given"
+  let toString = error =>
+    switch error {
+    | File(path) => "Trying to locate \"" ++ path ++ "\" but the file does not exist"
+    | Command(name, e) =>
+      "Trying to find the command \"" ++ name ++ "\": " ++ Command.Error.toString(e)
+    | TCP(port, host, e) =>
+      "Trying to connect to " ++
+      host ++
+      ":" ++
+      string_of_int(port) ++
+      " : " ++
+      Util.JsError.toString(e)
+    | GitHub(e) => "Trying to download prebuilt from GitHub: " ++ GitHub.Error.toString(e)
     }
 }
 
 module Module: {
   let search: t => Promise.t<result<Method.t, Error.t>>
+  // returns `Method.t` if any is found, and errors of previous searches
   let searchUntilSuccess: array<t> => Promise.t<(option<Method.t>, array<Error.t>)>
+  // helper function for consuming results from `searchUntilSuccess`
+  let consumeResult: ((option<Method.t>, array<Error.t>)) => result<Method.t, array<Error.t>>
 } = {
   // returns the method of IPC if successful
   let search = source =>
@@ -45,11 +53,11 @@ module Module: {
       }
     | FromCommand(name) =>
       Command.search(name)
-      ->Promise.mapError(e => Error.Command(e))
+      ->Promise.mapError(e => Error.Command(name, e))
       ->Promise.mapOk(path => Method.ViaStdIO(path, FromPath(name)))
     | FromTCP(port, host) =>
       TCP.probe(port, host)
-      ->Promise.mapError(e => Error.TCP(e))
+      ->Promise.mapError(e => Error.TCP(port, host, e))
       ->Promise.mapOk(() => Method.ViaTCP(port, host, FromTCP(port, host)))
     | FromGitHub(info) =>
       GitHub.get(info)
@@ -63,7 +71,7 @@ module Module: {
   let searchUntilSuccess = sources => {
     let rec tryUntilSuccess = (accumErrors: list<Error.t>, input) =>
       switch input {
-      | list{} => Promise.resolved((None, list{Error.NoSourcesGiven}))
+      | list{} => Promise.resolved((None, list{}))
       | list{x} =>
         search(x)->Promise.map(result =>
           switch result {
@@ -85,6 +93,12 @@ module Module: {
       List.toArray(errors),
     ))
   }
+
+  let consumeResult = ((result, errors)) =>
+    switch result {
+    | None => Error(errors)
+    | Some(method) => Ok(method)
+    }
 }
 
 include Module
