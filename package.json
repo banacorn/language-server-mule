@@ -20,7 +20,7 @@
   "homepage": "https://github.com/banacorn/language-server-mule#readme",
   "devDependencies": {
     "bs-mocha": "^1.0.0",
-    "bs-vscode": "github:banacorn/bs-vscode#v0.0.16",
+    "rescript-vscode": "github:banacorn/rescript-vscode#v0.0.17",
     "mocha": "^7.1.2",
     "reason-nodejs": "github:banacorn/reason-nodejs#temp",
     "reason-promise": "^1.1.4",
