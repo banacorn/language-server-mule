@@ -179,7 +179,7 @@ module Module: {
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
     cacheInvalidateExpirationSecs: int,
-    cacheID: string,
+    log: string => unit,
   }
   let get: t => Promise.t<result<(string, Target.t), Error.t>>
   let getAgdaLanguageServer: t => Promise.t<
@@ -202,7 +202,7 @@ module Module: {
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
     cacheInvalidateExpirationSecs: int,
-    cacheID: string,
+    log: string => unit,
   }
 
   let inFlightDownloadFileName = "in-flight.download"
@@ -303,7 +303,7 @@ module Module: {
       ->Promise.mapOk(stat => stat.mtimeMs)
 
     let cachePath = self =>
-      NodeJs.Path.join2(self.globalStoragePath, "releases-cache-" ++ self.cacheID ++ ".json")
+      NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
 
     let isValid = self => {
       let path = cachePath(self)
@@ -345,7 +345,7 @@ module Module: {
 
     Cache.isValid(self)->Promise.flatMap(isValid =>
       if isValid {
-        Js.log("[ mule ] Use cached releases data")
+        self.log("[ mule ] Use cached releases data")
         // use the cached releases data
         Nd.Fs.readFile(path)
         ->Promise.mapError(e => Error.CannotRenameFile(e))
@@ -366,7 +366,7 @@ module Module: {
           }
         })
       } else {
-        Js.log("[ mule ] GitHub releases cache invalidated")
+        self.log("[ mule ] GitHub releases cache invalidated")
         getReleasesFromGitHub(self)->Promise.flatMapOk(Cache.persist(self))
       }
     )
@@ -385,10 +385,10 @@ module Module: {
           // don't download from GitHub if `target.fileName` already exists
           let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
           if NodeJs.Fs.existsSync(destPath) {
-            Js.log("[ mule ] Used downloaded program")
+            self.log("[ mule ] Used downloaded program")
             Promise.resolved(Ok((destPath, target)))
           } else {
-            Js.log("[ mule ] Download from GitHub instead")
+            self.log("[ mule ] Download from GitHub instead")
             downloadLanguageServer(self, target)
           }
         }
@@ -410,15 +410,14 @@ module Module: {
           // don't download from GitHub if `target.fileName` already exists
           let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
           if NodeJs.Fs.existsSync(destPath) {
-            Js.log("[ mule ] Used downloaded program")
+            self.log("[ mule ] Used downloaded program")
             let execPath = NodeJs.Path.join2(destPath, "als")
             let assetPath = NodeJs.Path.join2(destPath, "data")
-            Js.log("[ mule ] Path of executable: " ++ execPath)
             let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
             let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
             Promise.resolved(Ok((execPath, [], Some(options), target)))
           } else {
-            Js.log("[ mule ] Download from GitHub instead")
+            self.log("[ mule ] Download from GitHub instead")
             downloadLanguageServer(self, target)->Promise.mapOk(((destPath, target)) => {
               let execPath = NodeJs.Path.join2(destPath, "als")
               let assetPath = NodeJs.Path.join2(destPath, "data")
