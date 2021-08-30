@@ -1,6 +1,6 @@
 {
   "name": "language-server-mule",
-  "version": "0.1.7",
+  "version": "0.1.9",
   "description": "Rescript library for hauling language servers from your disk or somewhere else",
   "main": "Main.bs.js",
   "scripts": {
