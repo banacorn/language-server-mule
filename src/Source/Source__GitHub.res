@@ -1,4 +1,4 @@
-module Unzip = Source__GitHub__Unzip
+module Unzip = Source__GitHub__Unzip2
 module Download = Source__GitHub__Download
 
 module Nd = {
@@ -90,7 +90,6 @@ module Error = {
     | CannotReadFile(Js.Exn.t)
     | CannotDeleteFile(Js.Exn.t)
     | CannotRenameFile(Js.Exn.t)
-    | CannotUnzipFile(Unzip.Error.t)
 
   let toString = x =>
     switch x {
@@ -107,7 +106,6 @@ module Error = {
     | CannotReadFile(exn) => "Cannot to read files:\n" ++ Util.JsError.toString(exn)
     | CannotDeleteFile(exn) => "Cannot to delete files:\n" ++ Util.JsError.toString(exn)
     | CannotRenameFile(exn) => "Cannot to rename files:\n" ++ Util.JsError.toString(exn)
-    | CannotUnzipFile(error) => Unzip.Error.toString(error)
     }
 }
 
@@ -240,7 +238,7 @@ module Module: {
       Unzip.run(
         inFlightDownloadPath ++ ".zip",
         destPath,
-      )->Promise.mapError(error => Error.CannotUnzipFile(error))
+      )->Promise.map(() => Ok())
     })
     // remove the zip file
     ->Promise.flatMapOk(() =>
