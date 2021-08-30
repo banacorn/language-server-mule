@@ -86,6 +86,7 @@ module Error = {
     // cacheing
     | CannotCacheReleases(Js.Exn.t)
     // file system
+    | CannotChmodFile(string)
     | CannotStatFile(string)
     | CannotReadFile(Js.Exn.t)
     | CannotDeleteFile(Js.Exn.t)
@@ -103,6 +104,7 @@ module Error = {
     | CannotCacheReleases(exn) => "Failed to cache releases:\n" ++ Util.JsError.toString(exn)
     // file system
     | CannotStatFile(path) => "Cannot stat file \"" ++ path ++ "\""
+    | CannotChmodFile(path) => "Cannot chmod file \"" ++ path ++ "\""
     | CannotReadFile(exn) => "Cannot to read files:\n" ++ Util.JsError.toString(exn)
     | CannotDeleteFile(exn) => "Cannot to delete files:\n" ++ Util.JsError.toString(exn)
     | CannotRenameFile(exn) => "Cannot to rename files:\n" ++ Util.JsError.toString(exn)
@@ -170,6 +172,13 @@ module Target = {
 
 open Belt
 
+// helper function for chmoding 744 the executable
+let chmodExecutable = path =>
+  NodeJs.Fs.chmod(path, ~mode=0o744)
+  ->Promise.Js.fromBsPromise
+  ->Promise.Js.toResult
+  ->Promise.mapError(_ => Error.CannotChmodFile(path))
+
 module Module: {
   type t = {
     username: string,
@@ -178,18 +187,19 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
+    recoverFromDownload: ((string, Target.t)) => Promise.t<
+      result<
+        (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
+        Error.t,
+      >,
+    >,
     cacheInvalidateExpirationSecs: int,
     log: string => unit,
   }
-  let get: t => Promise.t<result<(string, Target.t), Error.t>>
-  let getAgdaLanguageServer: t => Promise.t<
+  // let get: t => Promise.t<result<(string, Target.t), Error.t>>
+  let get: t => Promise.t<
     result<
-      (
-        string,
-        array<string>,
-        option<Client__LSP__Binding.ExecutableOptions.t>,
-        Target.t,
-      ),
+      (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
       Error.t,
     >,
   >
@@ -201,6 +211,12 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
+    recoverFromDownload: ((string, Target.t)) => Promise.t<
+      result<
+        (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
+        Error.t,
+      >,
+    >,
     cacheInvalidateExpirationSecs: int,
     log: string => unit,
   }
@@ -302,8 +318,7 @@ module Module: {
       ->Promise.mapError(_ => Error.CannotStatFile(path))
       ->Promise.mapOk(stat => stat.mtimeMs)
 
-    let cachePath = self =>
-      NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
+    let cachePath = self => NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
 
     let isValid = self => {
       let path = cachePath(self)
@@ -386,10 +401,11 @@ module Module: {
           let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
           if NodeJs.Fs.existsSync(destPath) {
             self.log("[ mule ] Used downloaded program")
-            Promise.resolved(Ok((destPath, target)))
+            self.recoverFromDownload((destPath, target))
           } else {
-            self.log("[ mule ] Download from GitHub instead")
-            downloadLanguageServer(self, target)
+            self.log("[ mule ] Download from GitHub instead")            
+            downloadLanguageServer(self, target)->Promise.flatMapOk(self.recoverFromDownload)
+
           }
         }
       )
@@ -397,39 +413,46 @@ module Module: {
   }
 
   // TODO: refactor and eliminate this
-  let getAgdaLanguageServer = self => {
-    if isDownloading(self) {
-      Promise.resolved(Error(Error.AlreadyDownloading))
-    } else {
-      getReleases(self)
-      ->Promise.mapOk(self.chooseFromReleases)
-      ->Promise.flatMapOk(result =>
-        switch result {
-        | None => Promise.resolved(Error(Error.NoMatchingRelease))
-        | Some(target) =>
-          // don't download from GitHub if `target.fileName` already exists
-          let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
-          if NodeJs.Fs.existsSync(destPath) {
-            self.log("[ mule ] Used downloaded program")
-            let execPath = NodeJs.Path.join2(destPath, "als")
-            let assetPath = NodeJs.Path.join2(destPath, "data")
-            let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
-            let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
-            Promise.resolved(Ok((execPath, [], Some(options), target)))
-          } else {
-            self.log("[ mule ] Download from GitHub instead")
-            downloadLanguageServer(self, target)->Promise.mapOk(((destPath, target)) => {
-              let execPath = NodeJs.Path.join2(destPath, "als")
-              let assetPath = NodeJs.Path.join2(destPath, "data")
-              let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
-              let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
-              (execPath, [], Some(options), target)
-            })
-          }
-        }
-      )
-    }
-  }
+  // let getAgdaLanguageServer = self => {
+  //   if isDownloading(self) {
+  //     Promise.resolved(Error(Error.AlreadyDownloading))
+  //   } else {
+  //     getReleases(self)
+  //     ->Promise.mapOk(self.chooseFromReleases)
+  //     ->Promise.flatMapOk(result =>
+  //       switch result {
+  //       | None => Promise.resolved(Error(Error.NoMatchingRelease))
+  //       | Some(target) =>
+  //         // don't download from GitHub if `target.fileName` already exists
+  //         let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
+  //         if NodeJs.Fs.existsSync(destPath) {
+
+
+  //           self.log("[ mule ] Used downloaded program")
+  //           self.recoverFromDownload((destPath, target ))
+  //           // let execPath = NodeJs.Path.join2(destPath, "als")
+  //           // let assetPath = NodeJs.Path.join2(destPath, "data")
+  //           // let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
+  //           // let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
+
+  //           // Promise.resolved(Ok((execPath, [], Some(options), target)))
+  //         } else {
+  //           self.log("[ mule ] Download from GitHub instead")
+  //           downloadLanguageServer(self, target)->Promise.flatMapOk(self.recoverFromDownload)
+
+            
+  //           // ->Promise.mapOk(((destPath, target)) => {
+  //           //   let execPath = NodeJs.Path.join2(destPath, "als")
+  //           //   let assetPath = NodeJs.Path.join2(destPath, "data")
+  //           //   let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
+  //           //   let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
+  //           //   (execPath, [], Some(options), target)
+  //           // })
+  //         }
+  //       }
+  //     )
+  //   }
+  // }
 }
 
 include Module
