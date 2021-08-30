@@ -10,6 +10,7 @@ type t =
   | FromCommand(string) // name of the command
   | FromTCP(int, string) // port, host
   | FromGitHub(Source__GitHub.t)
+  | FromGitHub2(Source__GitHub.t)
 
 // error from the sources
 module Error = {
@@ -61,6 +62,13 @@ module Module: {
       ->Promise.mapOk(() => Method.ViaTCP(port, host, FromTCP(port, host)))
     | FromGitHub(info) =>
       GitHub.get(info)
+      ->Promise.mapError(e => Error.GitHub(e))
+      ->Promise.mapOk(((path, target)) => Method.ViaStdIO(
+        path,
+        FromGitHub(info, target.release, target.asset),
+      ))
+    | FromGitHub2(info) =>
+      GitHub.getAgdaLanguageServer(info)
       ->Promise.mapError(e => Error.GitHub(e))
       ->Promise.mapOk(((path, target)) => Method.ViaStdIO(
         path,

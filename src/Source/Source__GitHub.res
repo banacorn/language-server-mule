@@ -182,6 +182,7 @@ module Module: {
     cacheID: string,
   }
   let get: t => Promise.t<result<(string, Target.t), Error.t>>
+  let getAgdaLanguageServer: t => Promise.t<result<(string, Target.t), Error.t>>
 } = {
   type t = {
     username: string,
@@ -379,6 +380,33 @@ module Module: {
           if NodeJs.Fs.existsSync(destPath) {
             Js.log("[ mule ] Used downloaded program")
             Promise.resolved(Ok((destPath, target)))
+          } else {
+            Js.log("[ mule ] Download from GitHub instead")
+            downloadLanguageServer(self, target)
+          }
+        }
+      )
+    }
+  }
+
+  // TODO: refactor and eliminate this
+  let getAgdaLanguageServer = self => {
+    if isDownloading(self) {
+      Promise.resolved(Error(Error.AlreadyDownloading))
+    } else {
+      getReleases(self)
+      ->Promise.mapOk(self.chooseFromReleases)
+      ->Promise.flatMapOk(result =>
+        switch result {
+        | None => Promise.resolved(Error(Error.NoMatchingRelease))
+        | Some(target) =>
+          // don't download from GitHub if `target.fileName` already exists
+          let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
+          if NodeJs.Fs.existsSync(destPath) {
+            Js.log("[ mule ] Used downloaded program")
+            let command = "Agda_datadir=" ++ NodeJs.Path.join2(destPath, "data") ++ " " ++ NodeJs.Path.join2(destPath, "als")
+            Js.log("[ mule ] Command: " ++ command)
+            Promise.resolved(Ok((command, target)))
           } else {
             Js.log("[ mule ] Download from GitHub instead")
             downloadLanguageServer(self, target)
