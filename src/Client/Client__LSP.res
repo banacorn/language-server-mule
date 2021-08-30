@@ -71,7 +71,6 @@ module Module: Module = {
 
     let serverOptions = switch method {
     | Method.ViaTCP(port, _host, _) => LSP.ServerOptions.makeWithStreamInfo(port, "localhost")
-    | ViaStdIO(path, _) => LSP.ServerOptions.makeWithCommand(path, [], None)
     | ViaCommand(path, args, options, _) => LSP.ServerOptions.makeWithCommand(path, args, options)
     }
 

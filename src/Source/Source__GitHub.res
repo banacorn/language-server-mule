@@ -187,7 +187,7 @@ module Module: {
       (
         string,
         array<string>,
-        option<Client__LSP__Binding.ServerOptions.ExecutableOptions.t>,
+        option<Client__LSP__Binding.ExecutableOptions.t>,
         Target.t,
       ),
       Error.t,
@@ -415,12 +415,7 @@ module Module: {
             let assetPath = NodeJs.Path.join2(destPath, "data")
             Js.log("[ mule ] Path of executable: " ++ execPath)
             let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
-            let options = {
-              Client__LSP__Binding.ServerOptions.ExecutableOptions.cwd: None,
-              env: Some(env),
-              detached: None,
-              shell: None,
-            }
+            let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
             Promise.resolved(Ok((execPath, [], Some(options), target)))
           } else {
             Js.log("[ mule ] Download from GitHub instead")
@@ -428,12 +423,7 @@ module Module: {
               let execPath = NodeJs.Path.join2(destPath, "als")
               let assetPath = NodeJs.Path.join2(destPath, "data")
               let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
-              let options = {
-                Client__LSP__Binding.ServerOptions.ExecutableOptions.cwd: None,
-                env: Some(env),
-                detached: None,
-                shell: None,
-              }
+              let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
               (execPath, [], Some(options), target)
             })
           }

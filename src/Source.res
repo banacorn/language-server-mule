@@ -48,14 +48,14 @@ module Module: {
     switch source {
     | FromFile(path) =>
       if File.probe(path) {
-        Promise.resolved(Ok(Method.ViaStdIO(path, FromCommand(path))))
+        Promise.resolved(Ok(Method.ViaCommand(path, [], None, FromCommand(path))))
       } else {
         Promise.resolved(Error(Error.File(path)))
       }
     | FromCommand(name) =>
       Command.search(name)
       ->Promise.mapError(e => Error.Command(name, e))
-      ->Promise.mapOk(path => Method.ViaStdIO(path, FromPath(name)))
+      ->Promise.mapOk(path => Method.ViaCommand(path, [], None, FromPath(name)))
     | FromTCP(port, host) =>
       TCP.probe(port, host)
       ->Promise.mapError(e => Error.TCP(port, host, e))
@@ -63,15 +63,19 @@ module Module: {
     | FromGitHub(info) =>
       GitHub.get(info)
       ->Promise.mapError(e => Error.GitHub(e))
-      ->Promise.mapOk(((path, target)) => Method.ViaStdIO(
+      ->Promise.mapOk(((path, target)) => Method.ViaCommand(
         path,
+        [],
+        None,
         FromGitHub(info, target.release, target.asset),
       ))
     | FromGitHub2(info) =>
       GitHub.getAgdaLanguageServer(info)
       ->Promise.mapError(e => Error.GitHub(e))
       ->Promise.mapOk(((path, args, options, target)) => Method.ViaCommand(
-        path, args, options,
+        path,
+        args,
+        options,
         FromGitHub(info, target.release, target.asset),
       ))
     }

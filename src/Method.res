@@ -7,6 +7,5 @@ type source =
 
 // Means of Inter-process communication
 type t =
-  | ViaStdIO(string, source) // path
-  | ViaCommand(string, array<string>, option<Client__LSP__Binding.ServerOptions.ExecutableOptions.t>, source) // command, args, options
+  | ViaCommand(string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, source) // command, args, options
   | ViaTCP(int, string, source) // port, host
