@@ -88,6 +88,7 @@ module Error = {
     | CannotCacheReleases(Js.Exn.t)
     // file system
     | CannotStatFile(string)
+    | CannotChmodFile(string)
     | CannotReadFile(Js.Exn.t)
     | CannotDeleteFile(Js.Exn.t)
     | CannotRenameFile(Js.Exn.t)
@@ -105,6 +106,7 @@ module Error = {
     | CannotCacheReleases(exn) => "Failed to cache releases:\n" ++ Util.JsError.toString(exn)
     // file system
     | CannotStatFile(path) => "Cannot stat file \"" ++ path ++ "\""
+    | CannotChmodFile(path) => "Cannot chmod file \"" ++ path ++ "\" to make it executable"
     | CannotReadFile(exn) => "Cannot to read files:\n" ++ Util.JsError.toString(exn)
     | CannotDeleteFile(exn) => "Cannot to delete files:\n" ++ Util.JsError.toString(exn)
     | CannotRenameFile(exn) => "Cannot to rename files:\n" ++ Util.JsError.toString(exn)
@@ -186,6 +188,7 @@ module Module: {
     cacheID: string,
   }
   let get: t => Promise.t<result<(string, Target.t), Error.t>>
+  let chmodExecutable: string => Promise.t<result<unit, Error.t>>
   let log: string => unit
 } = {
   type t = {
@@ -199,6 +202,13 @@ module Module: {
     cacheInvalidateExpirationSecs: int,
     cacheID: string,
   }
+
+  // helper function for chmoding 744 the executable
+  let chmodExecutable = path =>
+    NodeJs.Fs.chmod(path, ~mode=0o744)
+    ->Promise.Js.fromBsPromise
+    ->Promise.Js.toResult
+    ->Promise.mapError(_ => Error.CannotStatFile(path))
 
   let log = Js.log
 
