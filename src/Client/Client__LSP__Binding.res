@@ -113,9 +113,23 @@ module LanguageClientOptions = {
 
 // Options to control the language client
 module ServerOptions = {
+
+  module ExecutableOptions = {
+    type t = {
+      cwd: option<string>,
+      env: option<Js.Dict.t<string>>,
+      detached: option<bool>,
+      shell: option<bool>,
+    }
+  }
+
   type t
-  let makeWithCommand: string => t = %raw("function (command) {
-      return { command: command }
+  let makeWithCommand: string => array<string> => option<ExecutableOptions.t> => t = %raw("function (command, args, options) {
+      return { 
+        command: command, 
+        args: args, 
+        options: options
+       }
     }")
 
   let makeWithStreamInfo: (int, string) => t = %raw("function (port, host) {

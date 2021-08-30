@@ -182,7 +182,17 @@ module Module: {
     cacheID: string,
   }
   let get: t => Promise.t<result<(string, Target.t), Error.t>>
-  let getAgdaLanguageServer: t => Promise.t<result<(string, Target.t), Error.t>>
+  let getAgdaLanguageServer: t => Promise.t<
+    result<
+      (
+        string,
+        array<string>,
+        option<Client__LSP__Binding.ServerOptions.ExecutableOptions.t>,
+        Target.t,
+      ),
+      Error.t,
+    >,
+  >
 } = {
   type t = {
     username: string,
@@ -236,10 +246,7 @@ module Module: {
     )
     // unzip the downloaded file
     ->Promise.flatMapOk(() => {
-      Unzip.run(
-        inFlightDownloadPath ++ ".zip",
-        destPath,
-      )->Promise.map(() => Ok())
+      Unzip.run(inFlightDownloadPath ++ ".zip", destPath)->Promise.map(() => Ok())
     })
     // remove the zip file
     ->Promise.flatMapOk(() =>
@@ -404,12 +411,31 @@ module Module: {
           let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
           if NodeJs.Fs.existsSync(destPath) {
             Js.log("[ mule ] Used downloaded program")
-            let command = "Agda_datadir=" ++ NodeJs.Path.join2(destPath, "data") ++ " " ++ NodeJs.Path.join2(destPath, "als")
-            Js.log("[ mule ] Command: " ++ command)
-            Promise.resolved(Ok((command, target)))
+            let execPath = NodeJs.Path.join2(destPath, "als")
+            let assetPath = NodeJs.Path.join2(destPath, "data")
+            Js.log("[ mule ] Path of executable: " ++ execPath)
+            let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
+            let options = {
+              Client__LSP__Binding.ServerOptions.ExecutableOptions.cwd: None,
+              env: Some(env),
+              detached: None,
+              shell: None,
+            }
+            Promise.resolved(Ok((execPath, [], Some(options), target)))
           } else {
             Js.log("[ mule ] Download from GitHub instead")
-            downloadLanguageServer(self, target)
+            downloadLanguageServer(self, target)->Promise.mapOk(((destPath, target)) => {
+              let execPath = NodeJs.Path.join2(destPath, "als")
+              let assetPath = NodeJs.Path.join2(destPath, "data")
+              let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
+              let options = {
+                Client__LSP__Binding.ServerOptions.ExecutableOptions.cwd: None,
+                env: Some(env),
+                detached: None,
+                shell: None,
+              }
+              (execPath, [], Some(options), target)
+            })
           }
         }
       )

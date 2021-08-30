@@ -70,8 +70,8 @@ module Module: {
     | FromGitHub2(info) =>
       GitHub.getAgdaLanguageServer(info)
       ->Promise.mapError(e => Error.GitHub(e))
-      ->Promise.mapOk(((path, target)) => Method.ViaStdIO(
-        path,
+      ->Promise.mapOk(((path, args, options, target)) => Method.ViaCommand(
+        path, args, options,
         FromGitHub(info, target.release, target.asset),
       ))
     }
