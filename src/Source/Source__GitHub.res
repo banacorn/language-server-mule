@@ -1,4 +1,4 @@
-module Unzip = Source__GitHub__Unzip2
+module Unzip = Source__GitHub__Unzip
 module Download = Source__GitHub__Download
 
 module Nd = {
