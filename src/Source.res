@@ -62,8 +62,8 @@ module Module: {
     | FromGitHub(info) =>
       GitHub.get(info)
       ->Promise.mapError(e => Error.GitHub(e))
-      ->Promise.mapOk(((path, target)) => Method.ViaStdIO(
-        path,
+      ->Promise.mapOk(((assetPath, target)) => Method.ViaStdIO(
+        assetPath,
         FromGitHub(info, target.release, target.asset),
       ))
     }

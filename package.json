@@ -1,6 +1,6 @@
 {
   "name": "language-server-mule",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Rescript library for hauling language servers from your disk or somewhere else",
   "main": "Main.bs.js",
   "scripts": {
@@ -28,9 +28,10 @@
     "vscode-test": "^1.3.0"
   },
   "dependencies": {
-    "vscode-languageclient": "^8.0.0-next.1",
     "@glennsl/bs-json": "github:banacorn/bs-json#0c900d3",
     "eventemitter3": "^4.0.7",
+    "unzipper": "^0.10.11",
+    "vscode-languageclient": "^8.0.0-next.1",
     "yauzl": "^2.10.0"
   }
 }

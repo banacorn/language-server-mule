@@ -1,4 +1,5 @@
 module Unzip = Source__GitHub__Unzip
+module Unzip2 = Source__GitHub__Unzip2
 module Download = Source__GitHub__Download
 
 module Nd = {
@@ -180,10 +181,12 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
+    log: string => unit,
     cacheInvalidateExpirationSecs: int,
     cacheID: string,
   }
   let get: t => Promise.t<result<(string, Target.t), Error.t>>
+  let log: string => unit
 } = {
   type t = {
     username: string,
@@ -192,25 +195,46 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
+    log: string => unit,
     cacheInvalidateExpirationSecs: int,
     cacheID: string,
   }
 
-  let inFlightDownloadFileName = "in-flight.download"
+  let log = Js.log
 
-  // in-flight download will be named as "in-flight.download"
+  let getAssetPath = (self, target: Target.t) =>
+    NodeJs.Path.join2(self.globalStoragePath, target.fileName)
+  let getFlightDownloadPath = self =>
+    NodeJs.Path.join2(self.globalStoragePath, "in-flight.download")
+
   // see if "in-flight.download" already exists
   let isDownloading = self => {
     if Node.Fs.existsSync(self.globalStoragePath) {
-      let inFlightDownloadPath = NodeJs.Path.join2(self.globalStoragePath, inFlightDownloadFileName)
       let fileNames = NodeJs.Fs.readdirSync(self.globalStoragePath)
-      let matched = fileNames->Array.keep(fileName => fileName == inFlightDownloadPath)
+      let matched = fileNames->Array.keep(fileName => fileName == getFlightDownloadPath(self))
       matched[0]->Option.isSome
     } else {
       // create a directory for `context.globalStoragePath` if it doesn't exist
       Nd.Fs.mkdirSync(self.globalStoragePath)
       false
     }
+  }
+
+  let unzip = (self, target) => {
+    let assetPath = getAssetPath(self, target)
+    let zipPath = assetPath ++ ".zip"
+
+    self.log("[ unzip ] Unzipping \"" ++ assetPath ++ "\"")
+    // suffix the downloaded file with ".zip"
+    Nd.Fs.rename(assetPath, zipPath)
+    ->Promise.mapError(e => Error.CannotRenameFile(e))
+    // unzip
+    ->Promise.flatMapOk(() => Unzip2.run(zipPath, assetPath)->Promise.map(() => Ok()))
+    // remove the zip file
+    ->Promise.flatMapOk(() =>
+      Nd.Fs.unlink(zipPath)->Promise.mapError(e => Error.CannotDeleteFile(e))
+    )
+    ->Promise.mapOk(() => target)
   }
 
   let downloadLanguageServer = (self, target: Target.t) => {
@@ -223,47 +247,27 @@ module Module: {
       },
     }
 
-    let inFlightDownloadPath = NodeJs.Path.join2(self.globalStoragePath, inFlightDownloadFileName)
-    let destPath = Node_path.join2(self.globalStoragePath, target.fileName)
-
-    Download.asFile(httpOptions, inFlightDownloadPath, self.onDownload)
+    Download.asFile(httpOptions, getFlightDownloadPath(self), self.onDownload)
     ->Promise.mapError(e => Error.CannotDownload(e))
-    // suffix with ".zip" after downloaded
+    // cleanup on error
+    ->Promise.flatMapError(error => {
+      let remove = path => {
+        if Node.Fs.existsSync(path) {
+          Nd.Fs.unlink(path)->Promise.map(_ => ())
+        } else {
+          Promise.resolved()
+        }
+      }
+      remove(getFlightDownloadPath(self))->Promise.map(_ => Error(error))
+    })
+    // rename on success
     ->Promise.flatMapOk(() =>
       Nd.Fs.rename(
-        inFlightDownloadPath,
-        inFlightDownloadPath ++ ".zip",
-      )->Promise.mapError(e => Error.CannotRenameFile(e))
+        getFlightDownloadPath(self),
+        getAssetPath(self, target),
+      )->Promise.mapError(error => Error.CannotRenameFile(error))
     )
-    // unzip the downloaded file
-    ->Promise.flatMapOk(() => {
-      Unzip.run(
-        inFlightDownloadPath ++ ".zip",
-        destPath,
-      )->Promise.mapError(error => Error.CannotUnzipFile(error))
-    })
-    // remove the zip file
-    ->Promise.flatMapOk(() =>
-      Nd.Fs.unlink(inFlightDownloadPath ++ ".zip")->Promise.mapError(e => Error.CannotDeleteFile(e))
-    )
-    // cleanup on error
-    ->Promise.flatMap(result =>
-      switch result {
-      | Error(error) =>
-        let remove = path => {
-          if Node.Fs.existsSync(path) {
-            Nd.Fs.unlink(path)->Promise.map(_ => ())
-          } else {
-            Promise.resolved()
-          }
-        }
-        Promise.allArray([
-          remove(inFlightDownloadPath),
-          remove(inFlightDownloadPath ++ ".zip"),
-        ])->Promise.map(_ => Error(error))
-      | Ok() => Promise.resolved(Ok((destPath, target)))
-      }
-    )
+    ->Promise.mapOk(() => target)
   }
 
   // NOTE: no caching
@@ -339,7 +343,7 @@ module Module: {
 
     Cache.isValid(self)->Promise.flatMap(isValid =>
       if isValid {
-        Js.log("[ mule ] Use cached releases data")
+        self.log("Use cached releases data")
         // use the cached releases data
         Nd.Fs.readFile(path)
         ->Promise.mapError(e => Error.CannotRenameFile(e))
@@ -360,7 +364,7 @@ module Module: {
           }
         })
       } else {
-        Js.log("[ mule ] GitHub releases cache invalidated")
+        self.log("GitHub releases cache invalidated")
         getReleasesFromGitHub(self)->Promise.flatMapOk(Cache.persist(self))
       }
     )
@@ -376,14 +380,16 @@ module Module: {
         switch result {
         | None => Promise.resolved(Error(Error.NoMatchingRelease))
         | Some(target) =>
+          let assetPath = getAssetPath(self, target)
           // don't download from GitHub if `target.fileName` already exists
-          let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
-          if NodeJs.Fs.existsSync(destPath) {
-            Js.log("[ mule ] Used downloaded program")
-            Promise.resolved(Ok((destPath, target)))
+          if NodeJs.Fs.existsSync(assetPath) {
+            self.log("Used downloaded program")
+            Promise.resolved(Ok(assetPath, target))
           } else {
-            Js.log("[ mule ] Download from GitHub instead")
+            self.log("Download from GitHub instead")
             downloadLanguageServer(self, target)
+            ->Promise.flatMapOk(unzip(self))
+            ->Promise.mapOk(_ => (assetPath, target))
           }
         }
       )

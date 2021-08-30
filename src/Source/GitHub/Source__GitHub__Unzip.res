@@ -21,13 +21,16 @@ module Yauzl = {
 }
 
 module Error = {
-  type t = CannotUnzip(string, Js.Exn.t)
+  type t =
+    | CannotUnzip(string, Js.Exn.t)
     | FileIsEmpty(string)
 
-  let toString = x => switch x {
-  | CannotUnzip(filepath, exn) => "Cannot unzip \"" ++ filepath ++ "\": " ++ Util.JsError.toString(exn)
-  | FileIsEmpty(filepath) => "Cannot unzip \"" ++ filepath ++ "\" because it's empty"
-  }
+  let toString = x =>
+    switch x {
+    | CannotUnzip(filepath, exn) =>
+      "Cannot unzip \"" ++ filepath ++ "\": " ++ Util.JsError.toString(exn)
+    | FileIsEmpty(filepath) => "Cannot unzip \"" ++ filepath ++ "\" because it's empty"
+    }
 }
 
 let run = (src, dest) => {
