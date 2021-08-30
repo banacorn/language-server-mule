@@ -182,13 +182,13 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
+    chooseExecutableToChmod: (string, Target.t) => option<string>,
     onDownload: Download.Event.t => unit,
     log: string => unit,
     cacheInvalidateExpirationSecs: int,
-    cacheID: string,
   }
   let get: t => Promise.t<result<(string, Target.t), Error.t>>
-  let chmodExecutable: string => Promise.t<result<unit, Error.t>>
+  // let chmodExecutable: string => Promise.t<result<unit, Error.t>>
   let log: string => unit
 } = {
   type t = {
@@ -197,10 +197,10 @@ module Module: {
     userAgent: string,
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
+    chooseExecutableToChmod: (string, Target.t) => option<string>,
     onDownload: Download.Event.t => unit,
     log: string => unit,
     cacheInvalidateExpirationSecs: int,
-    cacheID: string,
   }
 
   // helper function for chmoding 744 the executable
@@ -310,8 +310,7 @@ module Module: {
       ->Promise.mapError(_ => Error.CannotStatFile(path))
       ->Promise.mapOk(stat => stat.mtimeMs)
 
-    let cachePath = self =>
-      NodeJs.Path.join2(self.globalStoragePath, "releases-cache-" ++ self.cacheID ++ ".json")
+    let cachePath = self => NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
 
     let isValid = self => {
       let path = cachePath(self)
@@ -399,7 +398,13 @@ module Module: {
             self.log("Download from GitHub instead")
             downloadLanguageServer(self, target)
             ->Promise.flatMapOk(unzip(self))
-            ->Promise.mapOk(_ => (assetPath, target))
+            ->Promise.flatMapOk(_ =>
+              switch self.chooseExecutableToChmod(assetPath, target) {
+              | None => Promise.resolved(Ok(assetPath, target))
+              | Some(executablePath) =>
+                chmodExecutable(executablePath)->Promise.mapOk(() => (assetPath, target))
+              }
+            )
           }
         }
       )
