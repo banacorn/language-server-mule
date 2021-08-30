@@ -87,6 +87,7 @@ module Error = {
     | CannotCacheReleases(Js.Exn.t)
     // file system
     | CannotStatFile(string)
+    | CannotChmodFile(string)
     | CannotReadFile(Js.Exn.t)
     | CannotDeleteFile(Js.Exn.t)
     | CannotRenameFile(Js.Exn.t)
@@ -103,6 +104,7 @@ module Error = {
     | CannotCacheReleases(exn) => "Failed to cache releases:\n" ++ Util.JsError.toString(exn)
     // file system
     | CannotStatFile(path) => "Cannot stat file \"" ++ path ++ "\""
+    | CannotChmodFile(path) => "Cannot chmod file \"" ++ path ++ "\""
     | CannotReadFile(exn) => "Cannot to read files:\n" ++ Util.JsError.toString(exn)
     | CannotDeleteFile(exn) => "Cannot to delete files:\n" ++ Util.JsError.toString(exn)
     | CannotRenameFile(exn) => "Cannot to rename files:\n" ++ Util.JsError.toString(exn)
@@ -181,15 +183,15 @@ module Module: {
     cacheInvalidateExpirationSecs: int,
     log: string => unit,
   }
-  let get: t => Promise.t<result<(string, Target.t), Error.t>>
+  let get: t => Promise.t<
+    result<
+      (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
+      Error.t,
+    >,
+  >
   let getAgdaLanguageServer: t => Promise.t<
     result<
-      (
-        string,
-        array<string>,
-        option<Client__LSP__Binding.ExecutableOptions.t>,
-        Target.t,
-      ),
+      (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
       Error.t,
     >,
   >
@@ -206,6 +208,13 @@ module Module: {
   }
 
   let inFlightDownloadFileName = "in-flight.download"
+
+  // helper function for chmoding 744 the executable
+  let chmodExecutable = path =>
+    NodeJs.Fs.chmod(path, ~mode=0o744)
+    ->Promise.Js.fromBsPromise
+    ->Promise.Js.toResult
+    ->Promise.mapError(_ => Error.CannotChmodFile(path))
 
   // in-flight download will be named as "in-flight.download"
   // see if "in-flight.download" already exists
@@ -302,8 +311,7 @@ module Module: {
       ->Promise.mapError(_ => Error.CannotStatFile(path))
       ->Promise.mapOk(stat => stat.mtimeMs)
 
-    let cachePath = self =>
-      NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
+    let cachePath = self => NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
 
     let isValid = self => {
       let path = cachePath(self)
@@ -386,10 +394,15 @@ module Module: {
           let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
           if NodeJs.Fs.existsSync(destPath) {
             self.log("[ mule ] Used downloaded program")
-            Promise.resolved(Ok((destPath, target)))
+            Promise.resolved(Ok((destPath, [], None, target)))
           } else {
             self.log("[ mule ] Download from GitHub instead")
-            downloadLanguageServer(self, target)
+            downloadLanguageServer(self, target)->Promise.mapOk(((path, target)) => (
+              path,
+              [],
+              None,
+              target,
+            ))
           }
         }
       )
@@ -418,12 +431,12 @@ module Module: {
             Promise.resolved(Ok((execPath, [], Some(options), target)))
           } else {
             self.log("[ mule ] Download from GitHub instead")
-            downloadLanguageServer(self, target)->Promise.mapOk(((destPath, target)) => {
+            downloadLanguageServer(self, target)->Promise.flatMapOk(((destPath, target)) => {
               let execPath = NodeJs.Path.join2(destPath, "als")
               let assetPath = NodeJs.Path.join2(destPath, "data")
               let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
               let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
-              (execPath, [], Some(options), target)
+              chmodExecutable(execPath)->Promise.mapOk(() => (execPath, [], Some(options), target))
             })
           }
         }
