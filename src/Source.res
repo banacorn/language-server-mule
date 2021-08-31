@@ -59,15 +59,6 @@ module Module: {
       TCP.probe(port, host)
       ->Promise.mapError(e => Error.TCP(port, host, e))
       ->Promise.mapOk(() => Method.ViaTCP(port, host, FromTCP(port, host)))
-    // | FromGitHub(info) =>
-    //   GitHub.get(info)
-    //   ->Promise.mapError(e => Error.GitHub(e))
-    //   ->Promise.mapOk(((path, target)) => Method.ViaCommand(
-    //     path,
-    //     [],
-    //     None,
-    //     FromGitHub(info, target.release, target.asset),
-    //   ))
     | FromGitHub(info) =>
       GitHub.get(info)
       ->Promise.mapError(e => Error.GitHub(e))

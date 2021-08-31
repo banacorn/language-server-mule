@@ -187,7 +187,7 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
-    recoverFromDownload: ((string, Target.t)) => Promise.t<
+    afterDownload: (bool, (string, Target.t)) => Promise.t<
       result<
         (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
         Error.t,
@@ -211,7 +211,7 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
-    recoverFromDownload: ((string, Target.t)) => Promise.t<
+    afterDownload: (bool, (string, Target.t)) => Promise.t<
       result<
         (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
         Error.t,
@@ -401,58 +401,15 @@ module Module: {
           let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
           if NodeJs.Fs.existsSync(destPath) {
             self.log("[ mule ] Used downloaded program")
-            self.recoverFromDownload((destPath, target))
+            self.afterDownload(true, (destPath, target))
           } else {
-            self.log("[ mule ] Download from GitHub instead")            
-            downloadLanguageServer(self, target)->Promise.flatMapOk(self.recoverFromDownload)
-
+            self.log("[ mule ] Download from GitHub instead")
+            downloadLanguageServer(self, target)->Promise.flatMapOk(self.afterDownload(false))
           }
         }
       )
     }
   }
-
-  // TODO: refactor and eliminate this
-  // let getAgdaLanguageServer = self => {
-  //   if isDownloading(self) {
-  //     Promise.resolved(Error(Error.AlreadyDownloading))
-  //   } else {
-  //     getReleases(self)
-  //     ->Promise.mapOk(self.chooseFromReleases)
-  //     ->Promise.flatMapOk(result =>
-  //       switch result {
-  //       | None => Promise.resolved(Error(Error.NoMatchingRelease))
-  //       | Some(target) =>
-  //         // don't download from GitHub if `target.fileName` already exists
-  //         let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
-  //         if NodeJs.Fs.existsSync(destPath) {
-
-
-  //           self.log("[ mule ] Used downloaded program")
-  //           self.recoverFromDownload((destPath, target ))
-  //           // let execPath = NodeJs.Path.join2(destPath, "als")
-  //           // let assetPath = NodeJs.Path.join2(destPath, "data")
-  //           // let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
-  //           // let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
-
-  //           // Promise.resolved(Ok((execPath, [], Some(options), target)))
-  //         } else {
-  //           self.log("[ mule ] Download from GitHub instead")
-  //           downloadLanguageServer(self, target)->Promise.flatMapOk(self.recoverFromDownload)
-
-            
-  //           // ->Promise.mapOk(((destPath, target)) => {
-  //           //   let execPath = NodeJs.Path.join2(destPath, "als")
-  //           //   let assetPath = NodeJs.Path.join2(destPath, "data")
-  //           //   let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
-  //           //   let options = Client__LSP__Binding.ExecutableOptions.make(~env, ())
-  //           //   (execPath, [], Some(options), target)
-  //           // })
-  //         }
-  //       }
-  //     )
-  //   }
-  // }
 }
 
 include Module
