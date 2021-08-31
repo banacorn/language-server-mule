@@ -70,7 +70,7 @@ module Module: Module = {
     let errorChan = Chan.make()
 
     let serverOptions = switch method {
-    | Method.ViaTCP(port, _host, _) => LSP.ServerOptions.makeWithStreamInfo(port, "localhost")
+    | Method.ViaTCP(port, host, _) => LSP.ServerOptions.makeWithStreamInfo(port, host)
     | ViaCommand(path, args, options, _) => LSP.ServerOptions.makeWithCommand(path, args, options)
     }
 

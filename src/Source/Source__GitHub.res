@@ -244,7 +244,7 @@ module Module: {
       "host": url["host"],
       "path": url["path"],
       "headers": {
-        "User-Agent": "gcl-vscode",
+        "User-Agent": self.userAgent,
       },
     }
 
