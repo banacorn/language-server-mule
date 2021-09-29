@@ -83,6 +83,7 @@ module Error = {
     // download
     | AlreadyDownloading
     | CannotDownload(Download.Error.t)
+    | CannotGetReleases(Download.Error.t)
     // cacheing
     | CannotCacheReleases(Js.Exn.t)
     // file system
@@ -98,7 +99,8 @@ module Error = {
     | JsonParseError(raw) => "Cannot parse string as JSON:\n" ++ raw
     | NoMatchingRelease => "Cannot find matching release from GitHub"
     // download
-    | CannotDownload(error) => Download.Error.toString(error)
+    | CannotDownload(error) => "Cannot downlaod file from GitHub:\n" ++ Download.Error.toString(error)
+    | CannotGetReleases(error) => "Cannot get release info from GitHub:\n" ++Download.Error.toString(error)
     | AlreadyDownloading => "Already downloading"
     // cacheing
     | CannotCacheReleases(exn) => "Failed to cache releases:\n" ++ Util.JsError.toString(exn)
@@ -300,10 +302,10 @@ module Module: {
     }
 
     Download.asJson(httpOptions)
-    ->Download.timeoutAfter(1000)
+    ->Download.timeoutAfter(10000)
     ->Promise.map(result =>
       switch result {
-      | Error(e) => Error(Error.CannotDownload(e))
+      | Error(e) => Error(Error.CannotGetReleases(e))
       | Ok(json) => Release.parseReleases(json)
       }
     )
