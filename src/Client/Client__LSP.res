@@ -3,7 +3,7 @@ module LSP = Client__LSP__Binding
 module type Module = {
   type t
   // lifecycle
-  let make: (string, string, Method.t) => Promise.t<result<t, Js.Exn.t>>
+  let make: (string, string, Method.t, Js.Json.t) => Promise.t<result<t, Js.Exn.t>>
   let destroy: t => Promise.t<unit>
   // request / notification / error
   let sendRequest: (t, Js.Json.t) => Promise.t<result<Js.Json.t, Js.Exn.t>>
@@ -66,7 +66,7 @@ module Module: Module = {
     LSP.LanguageClient.stop(self.client)
   }
 
-  let make = (id, name, method) => {
+  let make = (id, name, method, initializationOptions) => {
     let errorChan = Chan.make()
 
     let serverOptions = switch method {
@@ -104,7 +104,13 @@ module Module: Module = {
           DoNotRestart
         },
       )
-      LSP.LanguageClientOptions.make(documentSelector, synchronize, errorHandler)
+
+      LSP.LanguageClientOptions.make(
+        documentSelector,
+        synchronize,
+        errorHandler,
+        initializationOptions,
+      )
     }
 
     // Create the language client

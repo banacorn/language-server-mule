@@ -102,11 +102,13 @@ module LanguageClientOptions = {
     DocumentSelector.t,
     FileSystemWatcher.t,
     ErrorHandler.t,
-  ) => t = %raw("function (documentSelector, synchronize, errorHandler) {
+    Js.Json.t,
+  ) => t = %raw("function (documentSelector, synchronize, errorHandler, initializationOptions) {
       return {
 		    documentSelector: documentSelector,
 		    synchronize: synchronize,
-        errorHandler: errorHandler
+        errorHandler: errorHandler,
+        initializationOptions: initializationOptions
       }
     }")
 }
