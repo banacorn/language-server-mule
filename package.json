@@ -31,6 +31,6 @@
     "@glennsl/bs-json": "github:banacorn/bs-json#0c900d3",
     "eventemitter3": "^4.0.7",
     "unzipper": "^0.10.11",
-    "vscode-languageclient": "^8.0.0-next.1"
+    "vscode-languageclient": "^7.0.0"
   }
 }
