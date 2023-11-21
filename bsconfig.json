@@ -22,7 +22,7 @@
       "@glennsl/bs-json",
       "rescript-vscode",
       "reason-promise",
-      "reason-nodejs"
+      "rescript-nodejs"
     ],
     "bs-dev-dependencies": [
       "bs-mocha",

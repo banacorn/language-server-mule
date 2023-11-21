@@ -155,7 +155,7 @@ module Module: Module = {
     ->Option.forEach(stream =>
       stream
       ->NodeJs.Stream.onData(chunk => {
-        chan->Chan.emit(Stdout(Node.Buffer.toString(chunk)))
+        chan->Chan.emit(Stdout(NodeJs.Buffer.toString(chunk)))
       })
       ->ignore
     )
@@ -166,9 +166,9 @@ module Module: Module = {
     ->Option.forEach(stream =>
       stream
       ->NodeJs.Stream.onData(chunk => {
-        chan->Chan.emit(Stderr(Node.Buffer.toString(chunk)))
+        chan->Chan.emit(Stderr(NodeJs.Buffer.toString(chunk)))
         // store the latest message from stderr
-        stderr := Node.Buffer.toString(chunk)
+        stderr := NodeJs.Buffer.toString(chunk)
       })
       ->ignore
     )
@@ -222,7 +222,7 @@ module Module: Module = {
   let send = (self, request): bool => {
     switch self.status {
     | Created(process) =>
-      let payload = Node.Buffer.fromString(request ++ "\n")
+      let payload = NodeJs.Buffer.fromString(request ++ "\n")
       process
       ->NodeJs.ChildProcess.stdin
       ->Option.forEach(stream => stream->NodeJs.Stream.Writable.write(payload)->ignore)
