@@ -199,17 +199,17 @@ module LanguageClient = {
   @module("vscode-languageclient") @new
   external make: (string, string, ServerOptions.t, LanguageClientOptions.t) => t = "LanguageClient"
   // methods
-  @send external start: t => Promise.Js.t<unit, _> = "start"
+  @send external start: t => promise<unit> = "start"
 
   // default wait time: 2 seconds
-  @send external stop: t => option<int> => Promise.Js.t<unit, _> = "stop"
+  @send external stop: t => option<int> => promise<unit> = "stop"
   @send
   external onNotification: (t, string, 'a) => Disposable.t = "onNotification"
   // https://github.com/microsoft/vscode-languageserver-node/blob/02806427ce7251ec8fa2ff068febd9a9e59dbd2f/client/src/common/client.ts#L811C68-L811C81
   @send
-  external sendNotification: (t, string, 'a) => Promise.Js.t<unit, _> = "sendNotification"
+  external sendNotification: (t, string, 'a) => promise<unit> = "sendNotification"
   @send
-  external sendRequest: (t, string, Js.Json.t) => Promise.Js.t<'result, _> = "sendRequest"
+  external sendRequest: (t, string, Js.Json.t) => promise<'result> = "sendRequest"
   @send
-  external onRequest: (t, string, 'a => Promise.Js.t<'result, _>) => Disposable.t = "onRequest"
+  external onRequest: (t, string, 'a => promise<'result>) => Disposable.t = "onRequest"
 }
