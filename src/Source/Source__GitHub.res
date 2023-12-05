@@ -99,8 +99,10 @@ module Error = {
     | JsonParseError(raw) => "Cannot parse string as JSON:\n" ++ raw
     | NoMatchingRelease => "Cannot find matching release from GitHub"
     // download
-    | CannotDownload(error) => "Cannot downlaod file from GitHub:\n" ++ Download.Error.toString(error)
-    | CannotGetReleases(error) => "Cannot get release info from GitHub:\n" ++Download.Error.toString(error)
+    | CannotDownload(error) =>
+      "Cannot downlaod file from GitHub:\n" ++ Download.Error.toString(error)
+    | CannotGetReleases(error) =>
+      "Cannot get release info from GitHub:\n" ++ Download.Error.toString(error)
     | AlreadyDownloading => "Already downloading"
     // cacheing
     | CannotCacheReleases(exn) => "Failed to cache releases:\n" ++ Util.JsError.toString(exn)
@@ -189,7 +191,10 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
-    afterDownload: (bool, (string, Target.t)) => Promise.t<
+    afterDownload: (
+      bool,
+      (string, Target.t),
+    ) => Promise.t<
       result<
         (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
         Error.t,
@@ -213,7 +218,10 @@ module Module: {
     globalStoragePath: string,
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
-    afterDownload: (bool, (string, Target.t)) => Promise.t<
+    afterDownload: (
+      bool,
+      (string, Target.t),
+    ) => Promise.t<
       result<
         (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
         Error.t,
@@ -300,7 +308,6 @@ module Module: {
         "User-Agent": self.userAgent,
       },
     }
-
     Download.asJson(httpOptions)
     ->Download.timeoutAfter(10000)
     ->Promise.map(result =>
@@ -362,7 +369,7 @@ module Module: {
 
     Cache.isValid(self)->Promise.flatMap(isValid =>
       if isValid {
-        self.log("[ mule ] Use cached releases data")
+        self.log("[ mule ] Use cached releases data at:" ++ path)
         // use the cached releases data
         Nd.Fs.readFile(path)
         ->Promise.mapError(e => Error.CannotRenameFile(e))
@@ -402,7 +409,7 @@ module Module: {
           // don't download from GitHub if `target.fileName` already exists
           let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
           if NodeJs.Fs.existsSync(destPath) {
-            self.log("[ mule ] Used downloaded program")
+            self.log("[ mule ] Used downloaded program at:" ++ destPath)
             self.afterDownload(true, (destPath, target))
           } else {
             self.log("[ mule ] Download from GitHub instead")

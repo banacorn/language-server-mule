@@ -15,7 +15,7 @@ module Error = {
     | NotSupported(os) => "Path searching is not supported on \"" ++ os ++ "\""
     | OnError(exn) => "Got error when looking for the executable: " ++ Util.JsError.toString(exn)
     | OnStderr(msg) => "Got something from the stderr when looking for the executable: " ++ msg
-    | NotFound => "Cannot find the executalbe on PATH"
+    | NotFound => "Cannot find the executable on PATH"
     }
 }
 

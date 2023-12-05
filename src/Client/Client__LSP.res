@@ -3,12 +3,12 @@ module LSP = Client__LSP__Binding
 module type Module = {
   type t
   // lifecycle
-  let make: (string, string, Method.t, Js.Json.t) => Promise.t<result<t, Js.Exn.t>>
-  let destroy: t => Promise.t<unit>
+  let make: (string, string, Method.t, Js.Json.t) => promise<result<t, Js.Exn.t>>
+  let destroy: t => promise<result<unit, Js.Exn.t>>
   // request / notification / error
-  let sendRequest: (t, Js.Json.t) => Promise.t<result<Js.Json.t, Js.Exn.t>>
-  let onRequest: (t, Js.Json.t => Promise.t<result<Js.Json.t, Js.Exn.t>>) => VSCode.Disposable.t
-  let sendNotification: (t, Js.Json.t) => Promise.promise<result<unit, Js.Exn.t>>
+  let sendRequest: (t, Js.Json.t) => promise<result<Js.Json.t, Js.Exn.t>>
+  let onRequest: (t, Js.Json.t => promise<result<Js.Json.t, Js.Exn.t>>) => VSCode.Disposable.t
+  let sendNotification: (t, Js.Json.t) => promise<result<unit, Js.Exn.t>>
   let onNotification: (t, Js.Json.t => unit) => VSCode.Disposable.t
   let onError: (t, Js.Exn.t => unit) => VSCode.Disposable.t
   // channels for notification & error
@@ -17,6 +17,12 @@ module type Module = {
   // properties
   let getMethod: t => Method.t
 }
+
+let fromJsPromise = async (promise: promise<'t>): result<'t, Js.Exn.t> =>
+  switch await promise {
+  | result => Ok(result)
+  | exception Js.Exn.Error(e) => Error(e)
+  }
 
 module Module: Module = {
   open VSCode
@@ -29,32 +35,33 @@ module Module: Module = {
     // event emitters
     errorChan: Chan.t<Js.Exn.t>,
     notificationChan: Chan.t<Js.Json.t>,
-    // handles of listeners
-    subscriptions: array<VSCode.Disposable.t>,
   }
 
   let onError = (self, callback) =>
     self.errorChan->Chan.on(e => callback(e))->VSCode.Disposable.make
+
   let getErrorChan = self => self.errorChan
 
   let onNotification = (self, callback) =>
     self.notificationChan->Chan.on(callback)->VSCode.Disposable.make
-  let getNotificationChan = self => self.notificationChan
-  let sendNotification = (self, data) =>
-    self.client
-    ->LSP.LanguageClient.onReady
-    ->Promise.Js.toResult
-    ->Promise.flatMapOk(() => {
-      self.client->LSP.LanguageClient.sendNotification(self.id, data)->Promise.Js.toResult
-    })
 
-  let sendRequest = (self, data) =>
-    self.client
-    ->LSP.LanguageClient.onReady
-    ->Promise.Js.toResult
-    ->Promise.flatMapOk(() => {
-      self.client->LSP.LanguageClient.sendRequest(self.id, data)->Promise.Js.toResult
-    })
+  let getNotificationChan = self => self.notificationChan
+
+  let sendNotification = async (self, data) => {
+    await self.client->LSP.LanguageClient.start
+    switch await self.client->LSP.LanguageClient.sendNotification(self.id, data) {
+    | result => Ok(result)
+    | exception Js.Exn.Error(e) => Error(e)
+    }
+  }
+
+  let sendRequest = async (self, data) => {
+    await self.client->LSP.LanguageClient.start
+    switch await self.client->LSP.LanguageClient.sendRequest(self.id, data) {
+    | result => Ok(result)
+    | exception Js.Exn.Error(e) => Error(e)
+    }
+  }
 
   let onRequest = (self, callback) =>
     self.client->LSP.LanguageClient.onRequest(self.id, callback)->LSP.Disposable.toVSCodeDisposable
@@ -62,11 +69,10 @@ module Module: Module = {
   let destroy = self => {
     self.errorChan->Chan.destroy
     self.notificationChan->Chan.destroy
-    self.subscriptions->Belt.Array.forEach(VSCode.Disposable.dispose)->ignore
-    LSP.LanguageClient.stop(self.client)
+    LSP.LanguageClient.stop(self.client, Some(200))->fromJsPromise
   }
 
-  let make = (id, name, method, initializationOptions) => {
+  let make = async (id, name, method, initializationOptions) => {
     let errorChan = Chan.make()
 
     let serverOptions = switch method {
@@ -118,29 +124,17 @@ module Module: Module = {
 
     let self = {
       client: languageClient,
-      id: id,
-      name: name,
-      method: method,
-      errorChan: errorChan,
+      id,
+      name,
+      method,
+      errorChan,
       notificationChan: Chan.make(),
-      subscriptions: [languageClient->LSP.LanguageClient.start->LSP.Disposable.toVSCodeDisposable],
     }
 
-    // Let `LanguageClient.onReady` and `errorChan->Chan.once` race
-    Promise.race(list{
-      self.client->LSP.LanguageClient.onReady->Promise.Js.toResult,
-      errorChan->Chan.once->Promise.map(err => Error(err)),
-    })->Promise.mapOk(() => {
-      // start listening for incoming notifications
-      self.client
-      ->LSP.LanguageClient.onNotification(self.id, json => {
-        self.notificationChan->Chan.emit(json)
-      })
-      ->LSP.Disposable.toVSCodeDisposable
-      ->Js.Array.push(self.subscriptions)
-      ->ignore
-      self
-    })
+    switch await self.client->LSP.LanguageClient.start->fromJsPromise {
+    | Error(e) => Error(e)
+    | Ok() => Ok(self)
+    }
   }
 
   let getMethod = conn => conn.method
