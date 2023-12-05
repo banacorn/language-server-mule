@@ -19,7 +19,7 @@
     },
     "suffix": ".bs.js",
     "bs-dependencies": [
-      "@glennsl/bs-json",
+      "@glennsl/rescript-json-combinators",
       "rescript-vscode",
       "reason-promise",
       "rescript-nodejs"

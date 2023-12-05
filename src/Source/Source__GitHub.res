@@ -121,17 +121,20 @@ module Asset = {
     url: string,
   }
 
-  let decode = json => {
-    open Json.Decode
-    {
-      url: json |> field("browser_download_url", string),
-      name: json |> field("name", string),
-    }
+  let decode = {
+    open JsonCombinators.Json.Decode
+    object(field => {
+      name: field.required(. "name", string),
+      url: field.required(. "browser_download_url", string),
+    })
   }
 
-  let encode = asset => {
-    open Json.Encode
-    object_(list{("browser_download_url", asset.url |> string), ("name", asset.name |> string)})
+  let encode = ({url, name}) => {
+    open JsonCombinators.Json.Encode
+    Unsafe.object({
+      "name": string(name),
+      "browser_download_url": string(url),
+    })
   }
 }
 
@@ -141,28 +144,33 @@ module Release = {
     assets: array<Asset.t>,
   }
 
-  let decode = json => {
-    open Json.Decode
-    {
-      tagName: json |> field("tag_name", string),
-      assets: json |> field("assets", array(Asset.decode)),
-    }
-  }
-
-  let encode = release => {
-    open Json.Encode
-    object_(list{
-      ("tag_name", release.tagName |> string),
-      ("assets", release.assets |> array(Asset.encode)),
+  let decode = {
+    open JsonCombinators.Json.Decode
+    object(field => {
+      tagName: field.required(. "tag_name", string),
+      assets: field.required(. "assets", array(Asset.decode)),
     })
   }
 
-  let parseReleases = json =>
-    try {
-      Ok(json |> Json.Decode.array(decode))
-    } catch {
-    | Json.Decode.DecodeError(e) => Error(Error.ResponseDecodeError(e, json))
+  let encode = release => {
+    open JsonCombinators.Json.Encode
+    Unsafe.object({
+      "tag_name": string(release.tagName),
+      "assets": array(Asset.encode, release.assets),
+    })
+  }
+
+  let encodeReleases = releases => {
+    open JsonCombinators.Json.Encode
+    array(encode, releases)
+  }
+
+  let decodeReleases = json => {
+    switch JsonCombinators.Json.decode(json, JsonCombinators.Json.Decode.array(decode)) {
+    | Ok(releases) => Ok(releases)
+    | Error(e) => Error(Error.ResponseDecodeError(e, json))
     }
+  }
 }
 
 module Target = {
@@ -313,7 +321,7 @@ module Module: {
     ->Promise.map(result =>
       switch result {
       | Error(e) => Error(Error.CannotGetReleases(e))
-      | Ok(json) => Release.parseReleases(json)
+      | Ok(json) => Release.decodeReleases(json)
       }
     )
   }
@@ -351,8 +359,7 @@ module Module: {
     }
 
     let persist = (self, releases) => {
-      let json =
-        Json_encode.array(Release.encode, releases)->Js_json.stringify->NodeJs.Buffer.fromString
+      let json = Release.encodeReleases(releases)->Js_json.stringify->NodeJs.Buffer.fromString
       let path = cachePath(self)
       Nd.Fs.writeFile(path, json)->Promise.map(result =>
         switch result {
@@ -384,7 +391,7 @@ module Module: {
         })
         // parse the json
         ->Promise.flatMapOk(json => {
-          switch Release.parseReleases(json) {
+          switch Release.decodeReleases(json) {
           | Error(e) => Promise.resolved(Error(e))
           | Ok(releases) => Promise.resolved(Ok(releases))
           }
