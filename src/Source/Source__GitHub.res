@@ -117,46 +117,118 @@ module Error = {
 
 module Asset = {
   type t = {
-    name: string,
     url: string,
+    id: int,
+    node_id: string,
+    name: string,
+    label: string,
+    content_type: string,
+    state: string,
+    size: int,
+    created_at: string,
+    updated_at: string,
+    browser_download_url: string,
   }
 
   let decode = {
     open JsonCombinators.Json.Decode
     object(field => {
+      url: field.required(. "url", string),
+      id: field.required(. "id", int),
+      node_id: field.required(. "node_id", string),
       name: field.required(. "name", string),
-      url: field.required(. "browser_download_url", string),
+      label: field.required(. "label", string),
+      content_type: field.required(. "content_type", string),
+      state: field.required(. "state", string),
+      size: field.required(. "size", int),
+      created_at: field.required(. "created_at", string),
+      updated_at: field.required(. "updated_at", string),
+      browser_download_url: field.required(. "browser_download_url", string),
     })
   }
 
-  let encode = ({url, name}) => {
+  let encode = asset => {
     open JsonCombinators.Json.Encode
     Unsafe.object({
-      "name": string(name),
-      "browser_download_url": string(url),
+      "url": string(asset.url),
+      "id": int(asset.id),
+      "node_id": string(asset.node_id),
+      "name": string(asset.name),
+      "label": string(asset.label),
+      "content_type": string(asset.content_type),
+      "state": string(asset.state),
+      "size": int(asset.size),
+      "created_at": string(asset.created_at),
+      "updated_at": string(asset.updated_at),
+      "browser_download_url": string(asset.browser_download_url),
     })
   }
 }
 
 module Release = {
   type t = {
-    tagName: string,
+    url: string,
+    assets_url: string,
+    upload_url: string,
+    html_url: string,
+    id: int,
+    node_id: string,
+    tag_name: string,
+    target_commitish: string,
+    name: string,
+    draft: bool,
+    prerelease: bool,
+    created_at: string,
+    published_at: string,
     assets: array<Asset.t>,
+    tarball_url: string,
+    zipball_url: string,
+    body: option<string>,
   }
 
   let decode = {
     open JsonCombinators.Json.Decode
     object(field => {
-      tagName: field.required(. "tag_name", string),
+      url: field.required(. "url", string),
+      assets_url: field.required(. "assets_url", string),
+      upload_url: field.required(. "upload_url", string),
+      html_url: field.required(. "html_url", string),
+      id: field.required(. "id", int),
+      node_id: field.required(. "node_id", string),
+      tag_name: field.required(. "tag_name", string),
+      target_commitish: field.required(. "target_commitish", string),
+      name: field.required(. "name", string),
+      draft: field.required(. "draft", bool),
+      prerelease: field.required(. "prerelease", bool),
+      created_at: field.required(. "created_at", string),
+      published_at: field.required(. "published_at", string),
       assets: field.required(. "assets", array(Asset.decode)),
+      tarball_url: field.required(. "tarball_url", string),
+      zipball_url: field.required(. "zipball_url", string),
+      body: field.required(. "body", option(string)),
     })
   }
 
   let encode = release => {
     open JsonCombinators.Json.Encode
     Unsafe.object({
-      "tag_name": string(release.tagName),
+      "url": string(release.url),
+      "assets_url": string(release.assets_url),
+      "upload_url": string(release.upload_url),
+      "html_url": string(release.html_url),
+      "id": int(release.id),
+      "node_id": string(release.node_id),
+      "tag_name": string(release.tag_name),
+      "target_commitish": string(release.target_commitish),
+      "name": string(release.name),
+      "draft": bool(release.draft),
+      "prerelease": bool(release.prerelease),
+      "created_at": string(release.created_at),
+      "published_at": string(release.published_at),
       "assets": array(Asset.encode, release.assets),
+      "tarball_url": string(release.tarball_url),
+      "zipball_url": string(release.zipball_url),
+      "body": option(string, release.body),
     })
   }
 
@@ -166,6 +238,8 @@ module Release = {
   }
 
   let decodeReleases = json => {
+    Js.log("RELASESESE")
+    Js.log(json)
     switch JsonCombinators.Json.decode(json, JsonCombinators.Json.Decode.array(decode)) {
     | Ok(releases) => Ok(releases)
     | Error(e) => Error(Error.ResponseDecodeError(e, json))
@@ -177,8 +251,7 @@ module Target = {
   type t = {
     release: Release.t,
     asset: Asset.t,
-    srcUrl: string,
-    fileName: string,
+    saveAsFileName: string,
   }
 }
 
@@ -257,7 +330,7 @@ module Module: {
   }
 
   let downloadLanguageServer = (self, target: Target.t) => {
-    let url = Nd.Url.parse(target.srcUrl)
+    let url = Nd.Url.parse(target.asset.browser_download_url)
     let httpOptions = {
       "host": url["host"],
       "path": url["path"],
@@ -267,7 +340,7 @@ module Module: {
     }
 
     let inFlightDownloadPath = NodeJs.Path.join2(self.globalStoragePath, inFlightDownloadFileName)
-    let destPath = Node_path.join2(self.globalStoragePath, target.fileName)
+    let destPath = Node_path.join2(self.globalStoragePath, target.saveAsFileName)
 
     Download.asFile(httpOptions, inFlightDownloadPath, self.onDownload)
     ->Promise.mapError(e => Error.CannotDownload(e))
@@ -414,7 +487,7 @@ module Module: {
         | None => Promise.resolved(Error(Error.NoMatchingRelease))
         | Some(target) =>
           // don't download from GitHub if `target.fileName` already exists
-          let destPath = NodeJs.Path.join2(self.globalStoragePath, target.fileName)
+          let destPath = NodeJs.Path.join2(self.globalStoragePath, target.saveAsFileName)
           if NodeJs.Fs.existsSync(destPath) {
             self.log("[ mule ] Used downloaded program at:" ++ destPath)
             self.afterDownload(true, (destPath, target))
