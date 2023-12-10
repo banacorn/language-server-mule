@@ -238,8 +238,6 @@ module Release = {
   }
 
   let decodeReleases = json => {
-    Js.log("RELASESESE")
-    Js.log(json)
     switch JsonCombinators.Json.decode(json, JsonCombinators.Json.Decode.array(decode)) {
     | Ok(releases) => Ok(releases)
     | Error(e) => Error(Error.ResponseDecodeError(e, json))
