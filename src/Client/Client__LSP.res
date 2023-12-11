@@ -47,21 +47,17 @@ module Module: Module = {
 
   let getNotificationChan = self => self.notificationChan
 
-  let sendNotification = async (self, data) => {
-    await self.client->LSP.LanguageClient.start
-    switch await self.client->LSP.LanguageClient.sendNotification(self.id, data) {
-    | result => Ok(result)
-    | exception Js.Exn.Error(e) => Error(e)
-    }
-  }
+  let sendNotification = (self, data) =>
+    Util.Promise.catch(async () => {
+      await self.client->LSP.LanguageClient.start
+      await self.client->LSP.LanguageClient.sendNotification(self.id, data)
+    })
 
-  let sendRequest = async (self, data) => {
-    await self.client->LSP.LanguageClient.start
-    switch await self.client->LSP.LanguageClient.sendRequest(self.id, data) {
-    | result => Ok(result)
-    | exception Js.Exn.Error(e) => Error(e)
-    }
-  }
+  let sendRequest = (self, data) =>
+    Util.Promise.catch(async () => {
+      await self.client->LSP.LanguageClient.start
+      await self.client->LSP.LanguageClient.sendRequest(self.id, data)
+    })
 
   let onRequest = (self, callback) =>
     self.client->LSP.LanguageClient.onRequest(self.id, callback)->LSP.Disposable.toVSCodeDisposable
