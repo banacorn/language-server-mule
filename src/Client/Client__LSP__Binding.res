@@ -66,7 +66,6 @@ module ErrorHandler: {
         if length <= maxRestartCount {
           Restart
         } else {
-          open Belt
           let diff =
             restarts[length - 1]->Option.flatMap(latest =>
               restarts[0]->Option.map(first => latest -. first)
@@ -202,7 +201,7 @@ module LanguageClient = {
   @send external start: t => promise<unit> = "start"
 
   // default wait time: 2 seconds
-  @send external stop: t => option<int> => promise<unit> = "stop"
+  @send external stop: (t, option<int>) => promise<unit> = "stop"
   @send
   external onNotification: (t, string, 'a) => Disposable.t = "onNotification"
   // https://github.com/microsoft/vscode-languageserver-node/blob/02806427ce7251ec8fa2ff068febd9a9e59dbd2f/client/src/common/client.ts#L811C68-L811C81

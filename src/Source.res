@@ -1,5 +1,3 @@
-open Belt
-
 module Command = Source__Command
 module File = Source__File
 module TCP = Source__TCP
@@ -43,57 +41,51 @@ module Module: {
   let consumeResult: ((option<Method.t>, array<Error.t>)) => result<Method.t, array<Error.t>>
 } = {
   // returns the method of IPC if successful
-  let search = source =>
+  let search = async source =>
     switch source {
     | FromFile(path) =>
       if File.probe(path) {
-        Promise.resolved(Ok(Method.ViaCommand(path, [], None, FromCommand(path))))
+        Ok(Method.ViaCommand(path, [], None, FromCommand(path)))
       } else {
-        Promise.resolved(Error(Error.File(path)))
+        Error(Error.File(path))
       }
     | FromCommand(name) =>
-      Command.search(name)
-      ->Promise.mapError(e => Error.Command(name, e))
-      ->Promise.mapOk(path => Method.ViaCommand(path, [], None, FromPath(name)))
+      switch await Command.search(name) {
+      | Error(e) => Error(Error.Command(name, e))
+      | Ok(path) => Ok(Method.ViaCommand(path, [], None, FromPath(name)))
+      }
     | FromTCP(port, host) =>
-      TCP.probe(port, host)
-      ->Promise.mapError(e => Error.TCP(port, host, e))
-      ->Promise.mapOk(() => Method.ViaTCP(port, host, FromTCP(port, host)))
+      switch await TCP.probe(port, host) {
+      | Error(e) => Error(Error.TCP(port, host, e))
+      | Ok() => Ok(Method.ViaTCP(port, host, FromTCP(port, host)))
+      }
     | FromGitHub(info) =>
-      GitHub.get(info)
-      ->Promise.mapError(e => Error.GitHub(e))
-      ->Promise.mapOk(((path, args, options, target)) => Method.ViaCommand(
-        path,
-        args,
-        options,
-        FromGitHub(info, target.release, target.asset),
-      ))
+      switch await GitHub.get(info) {
+      | Error(e) => Error(Error.GitHub(e))
+      | Ok((path, args, options, target)) =>
+        Ok(Method.ViaCommand(path, args, options, FromGitHub(info, target.release, target.asset)))
+      }
     }
 
-  let searchUntilSuccess = sources => {
-    let rec tryUntilSuccess = (accumErrors: list<Error.t>, input) =>
+  let searchUntilSuccess = async sources => {
+    let rec tryUntilSuccess = async (accumErrors: list<Error.t>, input) =>
       switch input {
-      | list{} => Promise.resolved((None, list{}))
+      | list{} => (None, list{})
       | list{x} =>
-        search(x)->Promise.map(result =>
-          switch result {
-          | Error(e) => (None, list{e})
-          | Ok(v) => (Some(v), list{})
-          }
-        )
+        switch await search(x) {
+        | Error(e) => (None, list{e})
+        | Ok(v) => (Some(v), list{})
+        }
       | list{x, ...xs} =>
-        search(x)->Promise.flatMap(result =>
-          switch result {
-          | Error(e) =>
-            tryUntilSuccess(accumErrors, xs)->Promise.map(((v, es)) => (v, list{e, ...es}))
-          | Ok(v) => Promise.resolved((Some(v), accumErrors))
-          }
-        )
+        switch await search(x) {
+        | Error(e) =>
+          let (v, es) = await tryUntilSuccess(accumErrors, xs)
+          (v, list{e, ...es})
+        | Ok(v) => (Some(v), accumErrors)
+        }
       }
-    tryUntilSuccess(list{}, sources->List.fromArray)->Promise.map(((client, errors)) => (
-      client,
-      List.toArray(errors),
-    ))
+    let (client, errors) = await tryUntilSuccess(list{}, sources->List.fromArray)
+    (client, List.toArray(errors))
   }
 
   let consumeResult = ((result, errors)) =>

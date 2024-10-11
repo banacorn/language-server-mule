@@ -1,6 +1,5 @@
 {
     "name": "language-server-mule",
-    "version": "0.3.1",
     "sources": [
       {
         "dir": "src",
@@ -19,14 +18,16 @@
     },
     "suffix": ".bs.js",
     "bs-dependencies": [
+      "@rescript/core",
       "@glennsl/rescript-json-combinators",
       "rescript-vscode",
-      "reason-promise",
       "rescript-nodejs"
     ],
     "bs-dev-dependencies": [
-      "bs-mocha",
-      "reason-promise"
+      "bs-mocha"
+    ],
+    "bsc-flags": [
+      "-open RescriptCore"
     ],
     "warnings": {
       "error" : "+101"

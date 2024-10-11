@@ -1,4 +1,3 @@
-open Belt
 module Https = {
   @module("https")
   external get: (
@@ -55,75 +54,82 @@ module Event = {
 }
 
 module Module: {
-  let asJson: {"headers": {"User-Agent": string}, "host": string, "path": string} => Promise.t<
+  let asJson: {"headers": {"User-Agent": string}, "host": string, "path": string} => promise<
     result<Js.Json.t, Error.t>,
   >
   let asFile: (
     {"headers": {"User-Agent": string}, "host": string, "path": string},
     string,
     Event.t => unit,
-  ) => Promise.t<result<unit, Error.t>>
+  ) => promise<result<unit, Error.t>>
 
-  let timeoutAfter: (Promise.t<result<'a, Error.t>>, int) => Promise.t<result<'a, Error.t>>
+  let timeoutAfter: (promise<result<'a, Error.t>>, int) => promise<result<'a, Error.t>>
 } = {
   let gatherDataFromResponseStream = res => {
     open NodeJs.Http.IncomingMessage
-    let (promise, resolve) = Promise.pending()
     let body = ref("")
-    res->onData(buf => body := body.contents ++ NodeJs.Buffer.toString(buf))->ignore
-    res->onError(error => resolve(Error(Error.ServerResponseError(error))))->ignore
-    res->onClose(() => resolve(Ok(body.contents)))->ignore
-    promise
+    Promise.make((resolve, _) => {
+      res->onData(buf => body := body.contents ++ NodeJs.Buffer.toString(buf))->ignore
+      res->onError(error => resolve(Error(Error.ServerResponseError(error))))->ignore
+      res->onClose(() => resolve(Ok(body.contents)))->ignore
+    })
   }
 
   // with HTTP 301/302 redirect
   let getWithRedirects = options => {
-    let (promise, resolve) = Promise.pending()
-
-    Https.get(options, res => {
-      // check the response status code first
-      let statusCode = NodeJs.Http.IncomingMessage.statusCode(res)
-      switch statusCode {
-      // redirect
-      | 301
-      | 302 =>
-        let headers = NodeJs.Http.IncomingMessage.headers(res)
-        switch headers.location {
-        | None => resolve(Error(Error.NoRedirectLocation))
-        | Some(urlAfterRedirect) =>
-          Https.getWithUrl(urlAfterRedirect, resAfterRedirect => resolve(Ok(resAfterRedirect)))
+    Promise.make((resolve, _) => {
+      Https.get(options, res => {
+        // check the response status code first
+        let statusCode = NodeJs.Http.IncomingMessage.statusCode(res)
+        switch statusCode {
+        // redirect
+        | 301
+        | 302 =>
+          let headers = NodeJs.Http.IncomingMessage.headers(res)
+          switch headers.location {
+          | None => resolve(Error(Error.NoRedirectLocation))
+          | Some(urlAfterRedirect) =>
+            Https.getWithUrl(urlAfterRedirect, resAfterRedirect => resolve(Ok(resAfterRedirect)))
+          }
+        // ok ?
+        | _ => resolve(Ok(res))
         }
-      // ok ?
-      | _ => resolve(Ok(res))
-      }
+      })
     })
-    promise
   }
 
   // helper combinator for timeout
   let timeoutAfter = (p, n) => {
-    let (promise, resolve) = Promise.pending()
-    Js.Global.setTimeout(() => resolve(Error(Error.Timeout(n))), n)->ignore
-    Promise.race(list{promise, p})
+    Promise.race([
+      Promise.make((resolve, _) => {
+        Js.Global.setTimeout(() => resolve(Error(Error.Timeout(n))), n)->ignore
+      }),
+      p,
+    ])
   }
 
-  let asJson = httpOptions =>
-    getWithRedirects(httpOptions)
-    ->Promise.flatMapOk(gatherDataFromResponseStream)
-    ->Promise.flatMapOk(raw =>
-      try {
-        Promise.resolved(Ok(Js.Json.parseExn(raw)))
-      } catch {
-      | _ => Promise.resolved(Error(Error.JsonParseError(raw)))
+  let asJson = async httpOptions =>
+    switch await getWithRedirects(httpOptions) {
+    | Ok(res) =>
+      switch await gatherDataFromResponseStream(res) {
+      | Ok(raw) =>
+        try {
+          Ok(Js.Json.parseExn(raw))
+        } catch {
+        | _ => Error(Error.JsonParseError(raw))
+        }
+      | Error(e) => Error(e)
       }
-    )
+    | Error(e) => Error(e)
+    }
 
-  let asFile = (httpOptions, destPath, onDownload) =>
-    getWithRedirects(httpOptions)->Promise.flatMapOk(res => {
+  let asFile = async (httpOptions, destPath, onDownload) =>
+    switch await getWithRedirects(httpOptions) {
+    | Ok(res) =>
       onDownload(Event.Start)
       // calculate and report download progress
       let totalSize =
-        NodeJs.Http.IncomingMessage.headers(res).contentLenth->Option.mapWithDefault(
+        NodeJs.Http.IncomingMessage.headers(res).contentLenth->Option.mapOr(
           0,
           int_of_string,
         )
@@ -137,22 +143,22 @@ module Module: {
       ->ignore
 
       // pipe the response to a file
-      let (promise, resolve) = Promise.pending()
-      let fileStream = NodeJs.Fs.createWriteStream(destPath)
-      fileStream
-      ->NodeJs.Fs.WriteStream.onError(exn => resolve(Error(Error.CannotWriteFile(exn))))
-      ->ignore
-      fileStream
-      ->NodeJs.Fs.WriteStream.onClose(() => {
-        // report Event.Finish
-        onDownload(Finish)
-        // resolve the promise
-        resolve(Ok())
+      await Promise.make((resolve, _) => {
+        let fileStream = NodeJs.Fs.createWriteStream(destPath)
+        fileStream
+        ->NodeJs.Fs.WriteStream.onError(exn => resolve(Error(Error.CannotWriteFile(exn))))
+        ->ignore
+        fileStream
+        ->NodeJs.Fs.WriteStream.onClose(() => {
+          // report Event.Finish
+          onDownload(Finish)
+          // resolve the promise
+          resolve(Ok())
+        })
+        ->ignore
+        res->NodeJs.Http.IncomingMessage.pipe(fileStream)->ignore
       })
-      ->ignore
-      res->NodeJs.Http.IncomingMessage.pipe(fileStream)->ignore
-
-      promise
-    })
+    | Error(e) => Error(e)
+    }
 }
 include Module

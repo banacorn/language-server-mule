@@ -196,9 +196,9 @@ module Module: {
   type t<'a>
   let make: unit => t<'a>
   let emit: (t<'a>, 'a) => unit
-  let on: (t<'a>, 'a => unit, unit) => unit
-  let once: t<'a> => Promise.t<'a>
-  let pipe: (t<'a>, t<'a>, unit) => unit
+  let on: (t<'a>, 'a => unit) => (unit => unit)
+  let once: t<'a> => promise<'a>
+  let pipe: (t<'a>, t<'a>) => (unit => unit)
   let destroy: t<'a> => unit
 } = {
   type t<'a> = EventEmitter3.t
@@ -208,11 +208,9 @@ module Module: {
     self->EventEmitter3.on("data", callback)->ignore
     () => self->EventEmitter3.removeListener("data", callback)->ignore
   }
-  let once = self => {
-    let (promise, resolve) = Promise.pending()
+  let once = self => Promise.make((resolve, _) => {
     self->EventEmitter3.once("data", resolve)->ignore
-    promise
-  }
+  })
   let pipe = (self, other) => {
     self->on(val => other->emit(val))
   }

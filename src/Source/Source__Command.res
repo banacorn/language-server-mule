@@ -1,5 +1,3 @@
-open Belt
-
 // module for searching executables in PATH
 module Error = {
   type t =
@@ -28,53 +26,49 @@ let whichCommand = switch NodeJs.Os.type_() {
 | os => Error(os)
 }
 
-let search = (name): Promise.t<result<string, Error.t>> => {
-  let (promise, resolve) = Promise.pending()
+let search = (name): Promise.t<result<string, Error.t>> =>
+  Promise.make((resolve, _) => {
+    // reject if the process hasn't responded for more than 1 second
+    let hangTimeout = Js.Global.setTimeout(() => resolve(Error(Error.NotResponding)), 1000)
 
-  // reject if the process hasn't responded for more than 1 second
-  let hangTimeout = Js.Global.setTimeout(() => resolve(Error(Error.NotResponding)), 1000)
+    switch whichCommand {
+    | Error(os) => resolve(Error(NotSupported(os)))
+    | Ok(whichCommand) =>
+      NodeJs.ChildProcess.execWith(whichCommand ++ " " ++ name, %raw(`{shell : true}`), (
+        error,
+        stdout,
+        stderr,
+      ) => {
+        // clear timeout as the process has responded
+        Js.Global.clearTimeout(hangTimeout)
+        // error
+        error
+        ->Js.Nullable.toOption
+        ->Option.forEach(
+          err => {
+            let isNotFound =
+              Js.Exn.message(err)->Option.mapOr(false, a => Js.String.startsWith("Command failed: " ++ whichCommand ++ " " ++ name ++ "\n", a))
+            if isNotFound {
+              resolve(Error(NotFound))
+            } else {
+              resolve(Error(OnError(err)))
+            }
+          },
+        )
 
-  switch whichCommand {
-  | Error(os) => resolve(Error(NotSupported(os)))
-  | Ok(whichCommand) =>
-    NodeJs.ChildProcess.execWith(whichCommand ++ " " ++ name, %raw(`{shell : true}`), (
-      error,
-      stdout,
-      stderr,
-    ) => {
-      // clear timeout as the process has responded
-      Js.Global.clearTimeout(hangTimeout)
-      // error
-      error
-      ->Js.Nullable.toOption
-      ->Option.forEach(err => {
-        let isNotFound =
-          Js.Exn.message(err)->Option.mapWithDefault(
-            false,
-            Js.String.startsWith("Command failed: " ++ whichCommand ++ " " ++ name ++ "\n"),
-          )
-        if isNotFound {
+        // stderr
+        let stderr = NodeJs.Buffer.toString(stderr)
+        if stderr != "" {
+          resolve(Error(OnStderr(stderr)))
+        }
+
+        // stdout
+        let stdout = NodeJs.Buffer.toString(stdout)->String.trim
+        if stdout == "" || stdout == name ++ " not found" {
           resolve(Error(NotFound))
         } else {
-          resolve(Error(OnError(err)))
+          resolve(Ok(stdout))
         }
-      })
-
-      // stderr
-      let stderr = NodeJs.Buffer.toString(stderr)
-      if stderr != "" {
-        resolve(Error(OnStderr(stderr)))
-      }
-
-      // stdout
-      let stdout = NodeJs.Buffer.toString(stdout)->String.trim
-      if stdout == "" || stdout == name ++ " not found" {
-        resolve(Error(NotFound))
-      } else {
-        resolve(Ok(stdout))
-      }
-    })->ignore
-  }
-
-  promise
-}
+      })->ignore
+    }
+  })

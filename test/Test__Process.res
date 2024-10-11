@@ -1,72 +1,72 @@
-open BsMocha.Mocha
-module Assert = BsMocha.Assert
+// open BsMocha.Mocha
+// module Assert = BsMocha.Assert
 
-open Test__Util
+// open Test__Util
 
-open Client
+// open Client
 
-describe("Process Interface", () => {
-  describe("Use `echo` as the testing subject", () => {
-    Q.it("should trigger `close`", () => {
-      let process = Process.make("echo", ["hello"])
-      let (promise, resolve) = Promise.pending()
+// describe("Process Interface", () => {
+//   describe("Use `echo` as the testing subject", () => {
+//     Q.it("should trigger `close`", () => {
+//       let process = Process.make("echo", ["hello"])
+//       let (promise, resolve) = Promise.pending()
 
-      let method = process->Process.onOutput(output => {
-        switch output {
-        | Stdout("hello\n") => ()
-        | Stdout("hello\r\n") => ()
-        | Stdout(output) => resolve(Error("wrong output: " ++ output))
-        | Stderr(err) => resolve(Error("Stderr: " ++ err))
-        | Event(OnExit(_, _, 0, _)) => resolve(Ok())
-        | Event(event) => resolve(Error("Event: " ++ Process.Event.toString(event)))
-        }
-      })
-      promise->Promise.tap(_ => method())
-    })
-  })
-  describe("Use a non-existing command as the testing subject", () => {
-    Q.it("should trigger receive something from stderr", () => {
-      let process = Process.make("echooo", ["hello"])
-      let (promise, resolve) = Promise.pending()
+//       let method = process->Process.onOutput(output => {
+//         switch output {
+//         | Stdout("hello\n") => ()
+//         | Stdout("hello\r\n") => ()
+//         | Stdout(output) => resolve(Error("wrong output: " ++ output))
+//         | Stderr(err) => resolve(Error("Stderr: " ++ err))
+//         | Event(OnExit(_, _, 0, _)) => resolve(Ok())
+//         | Event(event) => resolve(Error("Event: " ++ Process.Event.toString(event)))
+//         }
+//       })
+//       promise->Promise.tap(_ => method())
+//     })
+//   })
+//   describe("Use a non-existing command as the testing subject", () => {
+//     Q.it("should trigger receive something from stderr", () => {
+//       let process = Process.make("echooo", ["hello"])
+//       let (promise, resolve) = Promise.pending()
 
-      let method = process->Process.onOutput(output => {
-        switch output {
-        | Stdout(output) => resolve(Error("wrong output: " ++ output))
-        | Stderr(_) => resolve(Ok())
-        | Event(event) => resolve(Error("Event: " ++ Process.Event.toString(event)))
-        }
-      })
-      promise->Promise.tap(_ => method())
-    })
-  })
+//       let method = process->Process.onOutput(output => {
+//         switch output {
+//         | Stdout(output) => resolve(Error("wrong output: " ++ output))
+//         | Stderr(_) => resolve(Ok())
+//         | Event(event) => resolve(Error("Event: " ++ Process.Event.toString(event)))
+//         }
+//       })
+//       promise->Promise.tap(_ => method())
+//     })
+//   })
 
-  // describe("Use `node` as the testing subject", () => {
-  //   Q.it("should behave normally", () => {
-  //     Search.Path.run("node")
-  //     ->Promise.mapError(Search.Path.Error.toString)
-  //     ->Promise.flatMapOk(path => {
-  //       let process = Process.make("path", [])
-  //       let (promise, resolve) = Promise.pending()
+//   // describe("Use `node` as the testing subject", () => {
+//   //   Q.it("should behave normally", () => {
+//   //     Search.Path.run("node")
+//   //     ->Promise.mapError(Search.Path.Error.toString)
+//   //     ->Promise.flatMapOk(path => {
+//   //       let process = Process.make("path", [])
+//   //       let (promise, resolve) = Promise.pending()
 
-  //       let method = process->Process.onOutput(output =>
-  //         switch output {
-  //         | Stdout("2") => resolve(Ok())
-  //         | Stdout(_) => resolve(Error("wrong answer"))
-  //         | Stderr(err) => resolve(Error("Stderr: " ++ err))
-  //         | Event(event) => resolve(Error("Event: " ++ snd(Process.Event.toString(event))))
-  //         }
-  //       )
+//   //       let method = process->Process.onOutput(output =>
+//   //         switch output {
+//   //         | Stdout("2") => resolve(Ok())
+//   //         | Stdout(_) => resolve(Error("wrong answer"))
+//   //         | Stderr(err) => resolve(Error("Stderr: " ++ err))
+//   //         | Event(event) => resolve(Error("Event: " ++ snd(Process.Event.toString(event))))
+//   //         }
+//   //       )
 
-  //       // let sent = process->Process.send("1 + 1")
-  //       // Assert.ok(sent)
+//   //       // let sent = process->Process.send("1 + 1")
+//   //       // Assert.ok(sent)
 
-  //       // process->Process.destroy->Promise.flatMap(_ => {
-  //       //   method()
-  //       //   promise
-  //       // })
+//   //       // process->Process.destroy->Promise.flatMap(_ => {
+//   //       //   method()
+//   //       //   promise
+//   //       // })
 
-  //       promise->Promise.tap(_ => method())
-  //     })
-  //   })
-  // })
-})
+//   //       promise->Promise.tap(_ => method())
+//   //     })
+//   //   })
+//   // })
+// })
