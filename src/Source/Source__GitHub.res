@@ -3,8 +3,8 @@ module Download = Source__GitHub__Download
 
 module Nd = {
   module Fs = {
-    @module("fs")
-    external mkdirSync: string => unit = "mkdirSync"
+    @module("node:fs") @scope("promises")
+    external readdir: string => promise<array<string>> = "readdir"
 
     @module("fs")
     external unlink_raw: (string, Js.null<Js.Exn.t> => unit) => unit = "unlink"
@@ -62,12 +62,6 @@ module Nd = {
     @module("fs")
     external createWriteStreamWithOptions: (string, {"mode": int}) => NodeJs.Fs.WriteStream.t =
       "createWriteStream"
-  }
-
-  module Url = {
-    @module("url")
-    external parse: string => {"host": string, "path": string, "protocol": string, "port": int} =
-      "parse"
   }
 }
 
@@ -311,24 +305,36 @@ module Module: {
 
   // in-flight download will be named as "in-flight.download"
   // see if "in-flight.download" already exists
-  let isDownloading = self => {
-    if NodeJs.Fs.existsSync(self.globalStoragePath) {
-      let inFlightDownloadPath = NodeJs.Path.join2(self.globalStoragePath, inFlightDownloadFileName)
-      let fileNames = NodeJs.Fs.readdirSync(self.globalStoragePath)
-      let matched = fileNames->Array.filter(fileName => fileName == inFlightDownloadPath)
-      matched[0]->Option.isSome
-    } else {
-      // create a directory for `context.globalStoragePath` if it doesn't exist
-      Nd.Fs.mkdirSync(self.globalStoragePath)
-      false
+  let isDownloading = async self => {
+    try {
+      let exists = switch await NodeJs.Fs.access(self.globalStoragePath) {
+      | () => true
+      | exception _ => false
+      }
+
+      if exists {
+        let inFlightDownloadPath = NodeJs.Path.join2(
+          self.globalStoragePath,
+          inFlightDownloadFileName,
+        )
+        let fileNames = await Nd.Fs.readdir(self.globalStoragePath)
+        let matched = fileNames->Array.filter(fileName => fileName == inFlightDownloadPath)
+        matched[0]->Option.isSome
+      } else {
+        // create a directory for `context.globalStoragePath` if it doesn't exist
+        await NodeJs.Fs.mkdir(self.globalStoragePath, {mode: 0o777})
+        false
+      }
+    } catch {
+    | _ => false
     }
   }
 
   let downloadLanguageServer = async (self, target: Target.t) => {
-    let url = Nd.Url.parse(target.asset.browser_download_url)
+    let url = NodeJs.Url.make(target.asset.browser_download_url)
     let httpOptions = {
-      "host": url["host"],
-      "path": url["path"],
+      "host": url.host,
+      "path": url.pathname,
       "headers": {
         "User-Agent": self.userAgent,
       },
@@ -461,7 +467,8 @@ module Module: {
   }
 
   let get = async self => {
-    if isDownloading(self) {
+    let ifIsDownloading = await isDownloading(self)
+    if ifIsDownloading {
       Error(Error.AlreadyDownloading)
     } else {
       switch await getReleases(self) {
