@@ -45,14 +45,14 @@ module Module: {
     switch source {
     | FromFile(path) =>
       if File.probe(path) {
-        Ok(Method.ViaCommand(path, [], None, FromCommand(path)))
+        Ok(Method.ViaCommand(path, [], None, FromFile(path)))
       } else {
         Error(Error.File(path))
       }
     | FromCommand(name) =>
       switch await Command.search(name) {
       | Error(e) => Error(Error.Command(name, e))
-      | Ok(path) => Ok(Method.ViaCommand(path, [], None, FromPath(name)))
+      | Ok(path) => Ok(Method.ViaCommand(path, [], None, FromCommand(name)))
       }
     | FromTCP(port, host) =>
       switch await TCP.probe(port, host) {
