@@ -1,3 +1,20 @@
+// open Mocha
+
+// Like `Promise.make` but without having to supply a callback
+let pending: unit => (promise<'a>, unit => unit, 'e => unit) = () => {
+  let resolve = ref(None)
+  let reject = ref(None)
+  let promise = Promise.make((res, rej) => {
+    resolve := Some(res)
+    reject := Some(rej)
+  })
+
+  switch (resolve.contents, reject.contents) {
+  | (Some(resolve), Some(reject)) => (promise, resolve, reject)
+  | _ => raise(Failure("Promise is not initialized"))
+  }
+}
+
 // module Path = {
 //   let toAbsolute = filepath => {
 
@@ -33,14 +50,6 @@
 //           | Error(error) => Promise.reject(. jsExnToExn(Js.Exn.raiseError(error)))
 //           | Ok(result) => Promise.resolve(. result)
 //       }
-//     // Promise.make((resolve, reject) =>
-//     //   f->Promise.get(x =>
-//     //     switch x {
-//     //     | Error(error) => reject(. jsExnToExn(Js.Exn.raiseError(error)))
-//     //     | Ok(result) => resolve(. result)
-//     //     }
-//     //   )
-//     // )
 
 //   let it = (s, f: unit => Promise.t<result<'a, string>>) =>
 //     BsMocha.Promise.it(s, () => f()->toPromise)

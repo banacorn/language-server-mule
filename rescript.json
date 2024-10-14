@@ -24,7 +24,7 @@
       "rescript-nodejs"
     ],
     "bs-dev-dependencies": [
-      "bs-mocha"
+      "rescript-mocha"
     ],
     "bsc-flags": [
       "-open RescriptCore"
