@@ -1,8 +1,3 @@
-// open BsMocha.Mocha
-// module Assert = BsMocha.Assert
-
-// open Test__Util
-
 open Mocha
 
 describe("Path Searching", () => {
@@ -148,9 +143,9 @@ describe("Path Searching", () => {
     Async.after(
       async () => {
         switch serverRef.contents {
-        | Some(server) => 
-            TcpServer.close(server, ~callback=_ => ())->ignore
-            serverRef := None
+        | Some(server) =>
+          TcpServer.close(server, ~callback=_ => ())->ignore
+          serverRef := None
         | None => Exn.raiseError("Server not found")
         }
       },
@@ -163,9 +158,9 @@ describe("Path Searching", () => {
   //     async () => {
   //       open Source.GitHub
 
-
-
-  //       let chooseFromReleases = (platform: Platform.t, releases: array<Release.t>): option<Target.t> => {
+  //       let chooseFromReleases = (platform: Platform.t, releases: array<Release.t>): option<
+  //         Target.t,
+  //       > => {
   //         let chooseRelease = (releases: array<Release.t>) => {
   //           // fetch the latest release
   //           let compare = (x: Release.t, y: Release.t) => {
@@ -183,38 +178,67 @@ describe("Path Searching", () => {
   //           | MacOS => Some("macos.zip")
   //           | Ubuntu => Some("ubuntu.zip")
   //           | Windows => Some("windows.zip")
-  //           | Others => None
+  //           | Others(_) => None
   //           }
 
   //           // find the corresponding asset
   //           expectedSuffix
-  //           ->Option.flatMap(suffix => {
-  //             let matched = release.assets->Array.keep(asset => Js.String2.endsWith(asset.name, suffix))
-  //             matched[0]
-  //           })
-  //           ->Option.map(asset => {
-  //             saveAsFileName: release.tag_name ++ "-" ++ Node_process.process["platform"],
-  //             Target.release,
-  //             asset,
-  //           })
+  //           ->Option.flatMap(
+  //             suffix => {
+  //               let matched =
+  //                 release.assets->Array.filter(asset => Js.String2.endsWith(asset.name, suffix))
+  //               matched[0]
+  //             },
+  //           )
+  //           ->Option.map(
+  //             asset => {
+  //               saveAsFileName: release.tag_name ++ "-" ++ NodeJs.Os.platform(),
+  //               Target.release,
+  //               asset,
+  //             },
+  //           )
   //         }
 
   //         chooseRelease(releases)->Option.flatMap(chooseAsset)
   //       }
 
+  //       let afterDownload = async (fromCached, (path, target)) => {
+  //         let execPath = NodeJs.Path.join2(path, "als")
+  //         // include "Agda_datadir" in the environment variable
+  //         let options = {
+  //           let assetPath = NodeJs.Path.join2(path, "data")
+  //           let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
+  //           Client__LSP__Binding.ExecutableOptions.make(~env, ())
+  //         }
+  //         // because it should've been chmod'ed after download
+  //         // because there's no need of chmod'ing on Windows
+  //         let shouldChmod777 = !fromCached && NodeJs.Os.platform() != "win32"
+  //         if shouldChmod777 {
+  //           let _ = await chmodExecutable(execPath)
+  //         } 
+          
+  //         Ok((execPath, [], Some(options), target))
+  //       }
+
+
+  //       let platform = switch await Platform.determine() {
+  //       | Ok(platform) => platform
+  //       | Error(exn) => Exn.raiseError(Util.JsError.toString(exn))
+  //       }
 
   //       let source = Source.FromGitHub({
-  //           username: "agda",
-  //           repository: "agda-language-server",
-  //           userAgent: "agda/agda-mode-vscode",
-  //           globalStoragePath: "./",
-  //           chooseFromReleases: chooseFromReleases(platform),
-  //           onDownload,
-  //           afterDownload,
-  //           log: Js.log,
-  //           cacheInvalidateExpirationSecs: 86400,
-  //         })
-  //       switch await Source.search(source, _, _) {
+  //         username: "agda",
+  //         repository: "agda-language-server",
+  //         userAgent: "agda/agda-mode-vscode",
+  //         globalStoragePath: "./",
+  //         chooseFromReleases: chooseFromReleases(platform, ...),
+  //         onDownload: _ => (),
+  //         afterDownload,
+  //         log: x => Js.log(x),
+  //         cacheInvalidateExpirationSecs: 86400,
+  //       })
+
+  //       switch await Source.search(source) {
   //       | Error(err) => Exn.raiseError(Source.Error.toString(err))
   //       | Ok(ViaCommand(_)) => Exn.raiseError("Expected ViaGitHub")
   //       | Ok(ViaTCP(_)) => Exn.raiseError("Expected ViaGitHub")

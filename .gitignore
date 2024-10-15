@@ -1,3 +1,6 @@
+# VS Code testing 
+.vscode-test/
+
 # From https://github.com/rescript-lang/rescript-project-template
 .DS_Store
 /node_modules/

@@ -160,30 +160,30 @@ module ServerOptions = {
     }")
 }
 
-module WebviewEditorInset = {
-  type t
-  // properties
-  @get external editor: t => VSCode.TextEditor.t = "editor"
-  @get external line: t => int = "line"
-  @get external height: t => int = "height"
-  @get external webview: t => VSCode.Webview.t = "webview"
-  @get external onDidDispose: t => VSCode.Event.t<unit> = "onDidDispose"
-  // methods
-  @send external dispose: t => unit = "dispose"
-}
+// module WebviewEditorInset = {
+//   type t
+//   // properties
+//   @get external editor: t => VSCode.TextEditor.t = "editor"
+//   @get external line: t => int = "line"
+//   @get external height: t => int = "height"
+//   @get external webview: t => VSCode.Webview.t = "webview"
+//   @get external onDidDispose: t => VSCode.Event.t<unit> = "onDidDispose"
+//   // methods
+//   @send external dispose: t => unit = "dispose"
+// }
 
-module WindowExt = {
-  @module("vscode") @scope("window")
-  external createWebviewTextEditorInset: (VSCode.TextEditor.t, int, int) => WebviewEditorInset.t =
-    "createWebviewTextEditorInset"
-  @module("vscode") @scope("window")
-  external createWebviewTextEditorInsetWithOptions: (
-    VSCode.TextEditor.t,
-    int,
-    int,
-    VSCode.WebviewOptions.t,
-  ) => WebviewEditorInset.t = "createWebviewTextEditorInset"
-}
+// module WindowExt = {
+//   @module("vscode") @scope("window")
+//   external createWebviewTextEditorInset: (VSCode.TextEditor.t, int, int) => WebviewEditorInset.t =
+//     "createWebviewTextEditorInset"
+//   @module("vscode") @scope("window")
+//   external createWebviewTextEditorInsetWithOptions: (
+//     VSCode.TextEditor.t,
+//     int,
+//     int,
+//     VSCode.WebviewOptions.t,
+//   ) => WebviewEditorInset.t = "createWebviewTextEditorInset"
+// }
 
 module Disposable = {
   type t
