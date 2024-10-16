@@ -45,14 +45,14 @@ module Module: {
     switch source {
     | FromFile(path) =>
       if File.probe(path) {
-        Ok(Method.ViaCommand(path, [], None, FromFile(path)))
+        Ok(Method.ViaPipe(path, [], None, FromFile(path)))
       } else {
         Error(Error.File(path))
       }
     | FromCommand(name) =>
       switch await Command.search(name) {
       | Error(e) => Error(Error.Command(name, e))
-      | Ok(path) => Ok(Method.ViaCommand(path, [], None, FromCommand(name)))
+      | Ok(path) => Ok(Method.ViaPipe(path, [], None, FromCommand(name)))
       }
     | FromTCP(port, host) =>
       switch await TCP.probe(port, host) {
@@ -63,7 +63,7 @@ module Module: {
       switch await GitHub.get(info) {
       | Error(e) => Error(Error.GitHub(e))
       | Ok((path, args, options, target)) =>
-        Ok(Method.ViaCommand(path, args, options, FromGitHub(info, target.release, target.asset)))
+        Ok(Method.ViaPipe(path, args, options, FromGitHub(info, target.release, target.asset)))
       }
     }
 

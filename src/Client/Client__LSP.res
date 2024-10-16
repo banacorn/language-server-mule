@@ -73,7 +73,7 @@ module Module: Module = {
 
     let serverOptions = switch method {
     | Method.ViaTCP(port, host, _) => LSP.ServerOptions.makeWithStreamInfo(port, host)
-    | ViaCommand(path, args, options, _) => LSP.ServerOptions.makeWithCommand(path, args, options)
+    | ViaPipe(path, args, options, _) => LSP.ServerOptions.makeWithCommand(path, args, options)
     }
 
     let clientOptions = {

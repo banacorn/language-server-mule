@@ -112,26 +112,11 @@ module LanguageClientOptions = {
     }")
 }
 
-module ExecutableOptions = {
-  type t = {
-    cwd: option<string>,
-    env: option<Js.Dict.t<string>>,
-    detached: option<bool>,
-    shell: option<bool>,
-  }
-
-  let make = (
-    ~cwd: option<string>=?,
-    ~env: option<Js.Dict.t<string>>=?,
-    ~detached: option<bool>=?,
-    ~shell: option<bool>=?,
-    (),
-  ) => {
-    cwd: cwd,
-    env: env,
-    detached: detached,
-    shell: shell,
-  }
+type executableOptions = {
+    cwd?: string,
+    env?: Js.Dict.t<string>,
+    detached?: bool,
+    shell?: bool
 }
 
 // Options to control the language client
@@ -140,7 +125,7 @@ module ServerOptions = {
   let makeWithCommand: (
     string,
     array<string>,
-    option<ExecutableOptions.t>,
+    option<executableOptions>,
   ) => t = %raw("function (command, args, options) {
       return { 
         command: command, 

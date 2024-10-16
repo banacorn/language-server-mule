@@ -62,6 +62,17 @@ module Nd = {
     @module("fs")
     external createWriteStreamWithOptions: (string, {"mode": int}) => NodeJs.Fs.WriteStream.t =
       "createWriteStream"
+
+
+    type rmOptions = {
+      maxRetries?: int,
+      recursive?: bool,
+      retryDelay?: int
+    }    
+
+    @module("node:fs") @scope("promises")
+    external rmWithOptions: (string, rmOptions) => promise<unit> = "rm"
+
   }
 }
 
@@ -120,6 +131,21 @@ module Asset = {
     browser_download_url: string,
   }
 
+  // convert all fields to a JS object-like string
+  let toString = asset => "{" ++ Js.Dict.fromArray([
+    ("url", asset.url),
+    ("id", string_of_int(asset.id)),
+    ("node_id", asset.node_id),
+    ("name", asset.name),
+    ("label", asset.label),
+    ("content_type", asset.content_type),
+    ("state", asset.state),
+    ("size", string_of_int(asset.size)),
+    ("created_at", asset.created_at),
+    ("updated_at", asset.updated_at),
+    ("browser_download_url", asset.browser_download_url),
+  ])->Js.Dict.entries->Array.map(((k, v)) => k ++ ": " ++ v)->Array.join(", ") ++ "}"
+
   let decode = {
     open JsonCombinators.Json.Decode
     object(field => {
@@ -175,6 +201,27 @@ module Release = {
     zipball_url: string,
     body: option<string>,
   }
+
+  // convert all fields to a JS object-like string
+  let toString = release => "{" ++ Js.Dict.fromArray([
+    ("url", release.url),
+    ("assets_url", release.assets_url),
+    ("upload_url", release.upload_url),
+    ("html_url", release.html_url),
+    ("id", string_of_int(release.id)),
+    ("node_id", release.node_id),
+    ("tag_name", release.tag_name),
+    ("target_commitish", release.target_commitish),
+    ("name", release.name),
+    ("draft", string_of_bool(release.draft)),
+    ("prerelease", string_of_bool(release.prerelease)),
+    ("created_at", release.created_at),
+    ("published_at", release.published_at),
+    ("assets", release.assets->Array.map(Asset.toString)->Array.join(", ")),
+    ("tarball_url", release.tarball_url),
+    ("zipball_url", release.zipball_url),
+    ("body", release.body->Option.map(s => "\"" ++ s ++ "\"")->Option.getOr("null")),
+  ])->Js.Dict.entries->Array.map(((k, v)) => k ++ ": " ++ v)->Array.join(", ") ++ "}"
 
   let decode = {
     open JsonCombinators.Json.Decode
@@ -249,9 +296,6 @@ let chmodExecutable = async path =>
   | _ => Ok()
   | exception Exn.Error(_) => Error(Error.CannotChmodFile(path))
   }
-// ->Promise.Js.fromBsPromise
-// ->Promise.Js.toResult
-// ->Promise.mapError(_ => Error.CannotChmodFile(path))
 
 module Module: {
   type t = {
@@ -266,17 +310,20 @@ module Module: {
       (string, Target.t),
     ) => Promise.t<
       result<
-        (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
+        (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
         Error.t,
       >,
     >,
     cacheInvalidateExpirationSecs: int,
     log: string => unit,
   }
+
+  let toString: t => string
+  
   // let get: t => Promise.t<result<(string, Target.t), Error.t>>
   let get: t => Promise.t<
     result<
-      (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
+      (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
       Error.t,
     >,
   >
@@ -293,13 +340,23 @@ module Module: {
       (string, Target.t),
     ) => Promise.t<
       result<
-        (string, array<string>, option<Client__LSP__Binding.ExecutableOptions.t>, Target.t),
+        (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
         Error.t,
       >,
     >,
     cacheInvalidateExpirationSecs: int,
     log: string => unit,
   }
+
+  // convert all fields to a JS object-like string
+  let toString = self => "{" ++ Js.Dict.fromArray([
+    ("username", self.username),
+    ("repository", self.repository),
+    ("userAgent", self.userAgent),
+    ("globalStoragePath", self.globalStoragePath),
+    ("cacheInvalidateExpirationSecs", string_of_int(self.cacheInvalidateExpirationSecs)),
+  ])->Js.Dict.entries->Array.map(((k, v)) => k ++ ": " ++ v)->Array.join(", ") ++ "}"
+
 
   let inFlightDownloadFileName = "in-flight.download"
 
