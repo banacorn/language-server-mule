@@ -180,7 +180,7 @@ describe("Path Searching", () => {
 
           let v0_2_6_4_0_3 = releases->Array.find(release => release.tag_name == "v0.2.6.4.0.3")
 
-          let chooseAsset = (release: Release.t) => {
+          let chooseFromAsset = (release: Release.t) => {
             // expected suffix of asset name
             let expectedSuffix = switch platform {
             | MacOS => Some("macos.zip")
@@ -200,15 +200,15 @@ describe("Path Searching", () => {
             )
             ->Option.map(
               asset => {
-                saveAsFileName: release.tag_name ++ "-" ++ NodeJs.Os.platform(),
-                Target.release,
+                Target.saveAsFileName: release.tag_name ++ "-" ++ NodeJs.Os.platform(),
+                release,
                 asset,
               },
             )
           }
 
           // chooseLatestRelease(releases)->Option.flatMap(chooseAsset)
-          v0_2_6_4_0_3->Option.flatMap(chooseAsset)
+          v0_2_6_4_0_3->Option.flatMap(chooseFromAsset)
         }
 
         let afterDownload = async (fromCached, (path, target)) => {
@@ -240,7 +240,7 @@ describe("Path Searching", () => {
         }
 
         let repo = {
-          username: "agda",
+          Repo.username: "agda",
           repository: "agda-language-server",
           userAgent: "agda/agda-mode-vscode",
           globalStoragePath: "./",
@@ -279,7 +279,7 @@ describe("Path Searching", () => {
             Assert.deepEqual(repo.globalStoragePath, "./")
             Assert.deepEqual(release.tag_name, "v0.2.6.4.0.3")
           | _ => Exn.raiseError("Expected FromGitHub")
-          } 
+          }
 
         | Ok(ViaTCP(_)) => Exn.raiseError("Expected ViaPipe")
         }

@@ -26,7 +26,7 @@ let whichCommand = switch NodeJs.Os.type_() {
 | os => Error(os)
 }
 
-let search = (name): Promise.t<result<string, Error.t>> =>
+let search = (name): promise<result<string, Error.t>> =>
   Promise.make((resolve, _) => {
     // reject if the process hasn't responded for more than 1 second
     let hangTimeout = Js.Global.setTimeout(() => resolve(Error(Error.NotResponding)), 1000)

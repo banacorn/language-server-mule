@@ -7,7 +7,7 @@ type t =
   | FromFile(string) // path of the program
   | FromCommand(string) // name of the command
   | FromTCP(int, string) // port, host
-  | FromGitHub(Source__GitHub.t)
+  | FromGitHub(Source__GitHub.Repo.t)
 
 // error from the sources
 module Error = {
@@ -34,9 +34,9 @@ module Error = {
 }
 
 module Module: {
-  let search: t => Promise.t<result<Method.t, Error.t>>
+  let search: t => promise<result<Method.t, Error.t>>
   // returns `Method.t` if any is found, and errors of previous searches
-  let searchUntilSuccess: array<t> => Promise.t<(option<Method.t>, array<Error.t>)>
+  let searchUntilSuccess: array<t> => promise<(option<Method.t>, array<Error.t>)>
   // helper function for consuming results from `searchUntilSuccess`
   let consumeResult: ((option<Method.t>, array<Error.t>)) => result<Method.t, array<Error.t>>
 } = {

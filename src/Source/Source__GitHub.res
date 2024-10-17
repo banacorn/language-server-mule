@@ -63,16 +63,14 @@ module Nd = {
     external createWriteStreamWithOptions: (string, {"mode": int}) => NodeJs.Fs.WriteStream.t =
       "createWriteStream"
 
-
     type rmOptions = {
       maxRetries?: int,
       recursive?: bool,
-      retryDelay?: int
-    }    
+      retryDelay?: int,
+    }
 
     @module("node:fs") @scope("promises")
     external rmWithOptions: (string, rmOptions) => promise<unit> = "rm"
-
   }
 }
 
@@ -132,19 +130,24 @@ module Asset = {
   }
 
   // convert all fields to a JS object-like string
-  let toString = asset => "{" ++ Js.Dict.fromArray([
-    ("url", asset.url),
-    ("id", string_of_int(asset.id)),
-    ("node_id", asset.node_id),
-    ("name", asset.name),
-    ("label", asset.label),
-    ("content_type", asset.content_type),
-    ("state", asset.state),
-    ("size", string_of_int(asset.size)),
-    ("created_at", asset.created_at),
-    ("updated_at", asset.updated_at),
-    ("browser_download_url", asset.browser_download_url),
-  ])->Js.Dict.entries->Array.map(((k, v)) => k ++ ": " ++ v)->Array.join(", ") ++ "}"
+  let toString = asset =>
+    "{" ++
+    Js.Dict.fromArray([
+      ("url", asset.url),
+      ("id", string_of_int(asset.id)),
+      ("node_id", asset.node_id),
+      ("name", asset.name),
+      ("label", asset.label),
+      ("content_type", asset.content_type),
+      ("state", asset.state),
+      ("size", string_of_int(asset.size)),
+      ("created_at", asset.created_at),
+      ("updated_at", asset.updated_at),
+      ("browser_download_url", asset.browser_download_url),
+    ])
+    ->Js.Dict.entries
+    ->Array.map(((k, v)) => k ++ ": " ++ v)
+    ->Array.join(", ") ++ "}"
 
   let decode = {
     open JsonCombinators.Json.Decode
@@ -203,25 +206,30 @@ module Release = {
   }
 
   // convert all fields to a JS object-like string
-  let toString = release => "{" ++ Js.Dict.fromArray([
-    ("url", release.url),
-    ("assets_url", release.assets_url),
-    ("upload_url", release.upload_url),
-    ("html_url", release.html_url),
-    ("id", string_of_int(release.id)),
-    ("node_id", release.node_id),
-    ("tag_name", release.tag_name),
-    ("target_commitish", release.target_commitish),
-    ("name", release.name),
-    ("draft", string_of_bool(release.draft)),
-    ("prerelease", string_of_bool(release.prerelease)),
-    ("created_at", release.created_at),
-    ("published_at", release.published_at),
-    ("assets", release.assets->Array.map(Asset.toString)->Array.join(", ")),
-    ("tarball_url", release.tarball_url),
-    ("zipball_url", release.zipball_url),
-    ("body", release.body->Option.map(s => "\"" ++ s ++ "\"")->Option.getOr("null")),
-  ])->Js.Dict.entries->Array.map(((k, v)) => k ++ ": " ++ v)->Array.join(", ") ++ "}"
+  let toString = release =>
+    "{" ++
+    Js.Dict.fromArray([
+      ("url", release.url),
+      ("assets_url", release.assets_url),
+      ("upload_url", release.upload_url),
+      ("html_url", release.html_url),
+      ("id", string_of_int(release.id)),
+      ("node_id", release.node_id),
+      ("tag_name", release.tag_name),
+      ("target_commitish", release.target_commitish),
+      ("name", release.name),
+      ("draft", string_of_bool(release.draft)),
+      ("prerelease", string_of_bool(release.prerelease)),
+      ("created_at", release.created_at),
+      ("published_at", release.published_at),
+      ("assets", release.assets->Array.map(Asset.toString)->Array.join(", ")),
+      ("tarball_url", release.tarball_url),
+      ("zipball_url", release.zipball_url),
+      ("body", release.body->Option.map(s => "\"" ++ s ++ "\"")->Option.getOr("null")),
+    ])
+    ->Js.Dict.entries
+    ->Array.map(((k, v)) => k ++ ": " ++ v)
+    ->Array.join(", ") ++ "}"
 
   let decode = {
     open JsonCombinators.Json.Decode
@@ -284,9 +292,9 @@ module Release = {
 
 module Target = {
   type t = {
-    release: Release.t,
-    asset: Asset.t,
-    saveAsFileName: string,
+    release: Release.t, // the release of the repo
+    asset: Asset.t, // the asset of that release
+    saveAsFileName: string, // file name of the downloaded asset
   }
 }
 
@@ -297,7 +305,7 @@ let chmodExecutable = async path =>
   | exception Exn.Error(_) => Error(Error.CannotChmodFile(path))
   }
 
-module Module: {
+module Repo = {
   type t = {
     username: string,
     repository: string,
@@ -306,39 +314,9 @@ module Module: {
     chooseFromReleases: array<Release.t> => option<Target.t>,
     onDownload: Download.Event.t => unit,
     afterDownload: (
-      bool,
+      bool, // if is from cache
       (string, Target.t),
-    ) => Promise.t<
-      result<
-        (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
-        Error.t,
-      >,
-    >,
-    cacheInvalidateExpirationSecs: int,
-    log: string => unit,
-  }
-
-  let toString: t => string
-  
-  // let get: t => Promise.t<result<(string, Target.t), Error.t>>
-  let get: t => Promise.t<
-    result<
-      (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
-      Error.t,
-    >,
-  >
-} = {
-  type t = {
-    username: string,
-    repository: string,
-    userAgent: string,
-    globalStoragePath: string,
-    chooseFromReleases: array<Release.t> => option<Target.t>,
-    onDownload: Download.Event.t => unit,
-    afterDownload: (
-      bool,
-      (string, Target.t),
-    ) => Promise.t<
+    ) => promise<
       result<
         (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
         Error.t,
@@ -349,37 +327,66 @@ module Module: {
   }
 
   // convert all fields to a JS object-like string
-  let toString = self => "{" ++ Js.Dict.fromArray([
-    ("username", self.username),
-    ("repository", self.repository),
-    ("userAgent", self.userAgent),
-    ("globalStoragePath", self.globalStoragePath),
-    ("cacheInvalidateExpirationSecs", string_of_int(self.cacheInvalidateExpirationSecs)),
-  ])->Js.Dict.entries->Array.map(((k, v)) => k ++ ": " ++ v)->Array.join(", ") ++ "}"
+  let toString = self =>
+    "{" ++
+    Js.Dict.fromArray([
+      ("username", self.username),
+      ("repository", self.repository),
+      ("userAgent", self.userAgent),
+      ("globalStoragePath", self.globalStoragePath),
+      ("cacheInvalidateExpirationSecs", string_of_int(self.cacheInvalidateExpirationSecs)),
+    ])
+    ->Js.Dict.entries
+    ->Array.map(((k, v)) => k ++ ": " ++ v)
+    ->Array.join(", ") ++ "}"
+}
 
+module Module: {
+  type configs
+
+  let get: Repo.t => promise<
+    result<
+      (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
+      Error.t,
+    >,
+  >
+} = {
+  type configs = {
+    globalStoragePath?: string,
+    userAgent?: string,
+    cacheInvalidateExpirationSecs?: int,
+    log?: string => unit,
+    onDownload?: Download.Event.t => unit,
+    afterDownload?: (
+      bool,
+      (string, Target.t),
+    ) => promise<
+      result<
+        (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
+        Error.t,
+      >,
+    >,
+  }
 
   let inFlightDownloadFileName = "in-flight.download"
 
   // in-flight download will be named as "in-flight.download"
   // see if "in-flight.download" already exists
-  let isDownloading = async self => {
+  let isDownloading = async globalStoragePath => {
     try {
-      let exists = switch await NodeJs.Fs.access(self.globalStoragePath) {
+      let exists = switch await NodeJs.Fs.access(globalStoragePath) {
       | () => true
       | exception _ => false
       }
 
       if exists {
-        let inFlightDownloadPath = NodeJs.Path.join2(
-          self.globalStoragePath,
-          inFlightDownloadFileName,
-        )
-        let fileNames = await Nd.Fs.readdir(self.globalStoragePath)
+        let inFlightDownloadPath = NodeJs.Path.join2(globalStoragePath, inFlightDownloadFileName)
+        let fileNames = await Nd.Fs.readdir(globalStoragePath)
         let matched = fileNames->Array.filter(fileName => fileName == inFlightDownloadPath)
         matched[0]->Option.isSome
       } else {
         // create a directory for `context.globalStoragePath` if it doesn't exist
-        await NodeJs.Fs.mkdir(self.globalStoragePath, {mode: 0o777})
+        await NodeJs.Fs.mkdir(globalStoragePath, {mode: 0o777})
         false
       }
     } catch {
@@ -387,20 +394,20 @@ module Module: {
     }
   }
 
-  let downloadLanguageServer = async (self, target: Target.t) => {
+  let downloadLanguageServer = async (repo: Repo.t, target: Target.t) => {
     let url = NodeJs.Url.make(target.asset.browser_download_url)
     let httpOptions = {
       "host": url.host,
       "path": url.pathname,
       "headers": {
-        "User-Agent": self.userAgent,
+        "User-Agent": repo.userAgent,
       },
     }
 
-    let inFlightDownloadPath = NodeJs.Path.join2(self.globalStoragePath, inFlightDownloadFileName)
-    let destPath = NodeJs.Path.join2(self.globalStoragePath, target.saveAsFileName)
+    let inFlightDownloadPath = NodeJs.Path.join2(repo.globalStoragePath, inFlightDownloadFileName)
+    let destPath = NodeJs.Path.join2(repo.globalStoragePath, target.saveAsFileName)
 
-    let result = switch await Download.asFile(httpOptions, inFlightDownloadPath, self.onDownload) {
+    let result = switch await Download.asFile(httpOptions, inFlightDownloadPath, repo.onDownload) {
     | Error(e) => Error(Error.CannotDownload(e))
     | Ok() =>
       // suffix with ".zip" after downloaded
@@ -438,12 +445,12 @@ module Module: {
 
   // NOTE: no caching
   // timeouts after 1000ms
-  let getReleasesFromGitHub = async self => {
+  let getReleasesFromGitHubRepo = async (repo: Repo.t) => {
     let httpOptions = {
       "host": "api.github.com",
-      "path": "/repos/" ++ self.username ++ "/" ++ self.repository ++ "/releases",
+      "path": "/repos/" ++ repo.username ++ "/" ++ repo.repository ++ "/releases",
       "headers": {
-        "User-Agent": self.userAgent,
+        "User-Agent": repo.userAgent,
       },
     }
     switch await Download.asJson(httpOptions)->Download.timeoutAfter(10000) {
@@ -460,7 +467,7 @@ module Module: {
       | exception Exn.Error(_) => Error(Error.CannotStatFile(path))
       }
 
-    let cachePath = self => NodeJs.Path.join2(self.globalStoragePath, "releases-cache.json")
+    let cachePath = repo => NodeJs.Path.join2(repo.Repo.globalStoragePath, "releases-cache.json")
 
     let isValid = async self => {
       let path = cachePath(self)
@@ -492,12 +499,12 @@ module Module: {
   }
 
   // use cached releases instead of fetching them from GitHub, if the cached releases data is not too old (24 hrs)
-  let getReleases = async self => {
-    let isValid = await Cache.isValid(self)
+  let getReleases = async repo => {
+    let isValid = await Cache.isValid(repo)
     if isValid {
       // use the cached releases data
-      let path = Cache.cachePath(self)
-      self.log("[ mule ] Use cached releases data at:" ++ path)
+      let path = Cache.cachePath(repo)
+      repo.log("[ mule ] Use cached releases data at:" ++ path)
 
       // read file and decode as json
       switch await Nd.Fs.readFile(path) {
@@ -515,57 +522,54 @@ module Module: {
         }
       }
     } else {
-      self.log("[ mule ] GitHub releases cache invalidated")
-      switch await getReleasesFromGitHub(self) {
-      | Ok(releases) => await Cache.persist(self, releases)
+      repo.log("[ mule ] GitHub releases cache invalidated")
+      switch await getReleasesFromGitHubRepo(repo) {
+      | Ok(releases) => await Cache.persist(repo, releases)
       | Error(e) => Error(e)
       }
     }
   }
 
-  let get = async self => {
-    let ifIsDownloading = await isDownloading(self)
+  // let makeConfig = configs => {
+  //     let default = {
+  //       globalStoragePath: "./",
+  //       userAgent: "agda/agda-mode-vscode",
+  //       cacheInvalidateExpirationSecs: 86400, // 24 hours
+  //       log: x => Js.log(x), // use console.log by default,
+  //       }
+
+  //   switch configs {
+  //   | None =>  default
+  //   | Some(configs) => default
+  // }}
+
+  // let defaultGlobalStoragePath = "./"
+
+  let get = async (repo: Repo.t) => {
+    let ifIsDownloading = await isDownloading(repo.globalStoragePath)
     if ifIsDownloading {
       Error(Error.AlreadyDownloading)
     } else {
-      switch await getReleases(self) {
+      switch await getReleases(repo) {
       | Error(error) => Error(error)
       | Ok(releases) =>
-        switch self.chooseFromReleases(releases) {
+        switch repo.chooseFromReleases(releases) {
         | None => Error(Error.NoMatchingRelease)
         | Some(target) =>
           // don't download from GitHub if `target.fileName` already exists
-          let destPath = NodeJs.Path.join2(self.globalStoragePath, target.saveAsFileName)
+          let destPath = NodeJs.Path.join2(repo.globalStoragePath, target.saveAsFileName)
           if NodeJs.Fs.existsSync(destPath) {
-            self.log("[ mule ] Used downloaded program at:" ++ destPath)
-            await self.afterDownload(true, (destPath, target))
+            repo.log("[ mule ] Used downloaded program at:" ++ destPath)
+            await repo.afterDownload(true, (destPath, target))
           } else {
-            self.log("[ mule ] Download from GitHub instead")
-            switch await downloadLanguageServer(self, target) {
+            repo.log("[ mule ] Download from GitHub instead")
+            switch await downloadLanguageServer(repo, target) {
             | Error(error) => Error(error)
-            | Ok(server) => await self.afterDownload(false, server)
+            | Ok(server) => await repo.afterDownload(false, server)
             }
           }
         }
       }
-
-      // getReleases(self)
-      // ->Promise.mapOk(self.chooseFromReleases)
-      // ->Promise.flatMapOk(result =>
-      //   switch result {
-      //   | None => Promise.resolved(Error(Error.NoMatchingRelease))
-      //   | Some(target) =>
-      //     // don't download from GitHub if `target.fileName` already exists
-      //     let destPath = NodeJs.Path.join2(self.globalStoragePath, target.saveAsFileName)
-      //     if NodeJs.Fs.existsSync(destPath) {
-      //       self.log("[ mule ] Used downloaded program at:" ++ destPath)
-      //       self.afterDownload(true, (destPath, target))
-      //     } else {
-      //       self.log("[ mule ] Download from GitHub instead")
-      //       downloadLanguageServer(self, target)->Promise.flatMapOk(self.afterDownload(false))
-      //     }
-      //   }
-      // )
     }
   }
 }
