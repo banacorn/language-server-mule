@@ -30,6 +30,7 @@
       "-open RescriptCore"
     ],
     "warnings": {
-      "error" : "+101"
+      "error" : "+101",
+      "warnings" : "+a"
     }
   }

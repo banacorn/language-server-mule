@@ -62,8 +62,13 @@ module Module: {
     | FromGitHub(info) =>
       switch await GitHub.get(info) {
       | Error(e) => Error(Error.GitHub(e))
-      | Ok((path, args, options, target)) =>
-        Ok(Method.ViaPipe(path, args, options, FromGitHub(info, target.release, target.asset)))
+      | Ok((isCached, target)) =>
+        let destPath = NodeJs.Path.join2(info.globalStoragePath, target.saveAsFileName)
+        switch await info.afterDownload(isCached, (destPath, target)) {
+        | Error(e) => Error(Error.GitHub(e))
+        | Ok((path, args, options, target)) =>
+          Ok(Method.ViaPipe(path, args, options, FromGitHub(info, target.release, target.asset)))
+        }
       }
     }
 

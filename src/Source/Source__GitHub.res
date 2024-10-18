@@ -91,6 +91,8 @@ module Error = {
     | CannotReadFile(Js.Exn.t)
     | CannotDeleteFile(Js.Exn.t)
     | CannotRenameFile(Js.Exn.t)
+    // OS 
+    | CannotDetermineOS(Js.Exn.t)
 
   let toString = x =>
     switch x {
@@ -111,6 +113,8 @@ module Error = {
     | CannotReadFile(exn) => "Cannot to read files:\n" ++ Util.JsError.toString(exn)
     | CannotDeleteFile(exn) => "Cannot to delete files:\n" ++ Util.JsError.toString(exn)
     | CannotRenameFile(exn) => "Cannot to rename files:\n" ++ Util.JsError.toString(exn)
+    // OS
+    | CannotDetermineOS(exn) => "Cannot determine OS:\n" ++ Util.JsError.toString(exn)
     }
 }
 
@@ -305,13 +309,117 @@ let chmodExecutable = async path =>
   | exception Exn.Error(_) => Error(Error.CannotChmodFile(path))
   }
 
+// module for determining the which OS the user is using
+module Platform = {
+  module GetOs = {
+    type t = {"os": string, "dist": string, "codename": string, "release": string}
+
+    @module
+    external getos: (('e, t) => unit) => unit = "getos"
+
+    let run = (): promise<t> => {
+      let (promise, resolve, reject) = Util.pending()
+      getos((e, os) => {
+        let e = Js.Nullable.toOption(e)
+        switch e {
+        | Some(e) => reject(e)
+        | None => resolve(os)
+        }
+      })
+      promise
+    }
+  }
+
+  type t = Windows | MacOS | Ubuntu | Others(string, GetOs.t)
+
+  let determine = async () =>
+    switch NodeJs.Os.platform() {
+    | "darwin" => Ok(MacOS)
+    | "linux" =>
+      // determine the distro
+      switch await GetOs.run() {
+      | info =>
+        switch info["dist"] {
+        | "Ubuntu" => Ok(Ubuntu)
+        | _ => Ok(Others("linux", info))
+        }
+      | exception Exn.Error(e) => Error(e)
+      }
+    | "win32" => Ok(Windows)
+    | others =>
+      // determine the distro
+      switch await GetOs.run() {
+      | info => Ok(Others(others, info))
+      | exception Exn.Error(e) => Error(e)
+      }
+    }
+}
+
+// strategy for selecting the language server from the releases
+module LanguageServerSelector = {
+  type t = UseLatest | SpecifyVersion(string) | Custom((Platform.t, array<Release.t>) => option<Target.t>)
+
+  // helper function for selecting the asset based on the platform
+  let chooseFromAssetBaseOnPlatform = (platform: Platform.t, release: Release.t) => {
+    // expected suffix of asset name
+    let expectedSuffix = switch platform {
+    | MacOS => Some("macos.zip")
+    | Ubuntu => Some("ubuntu.zip")
+    | Windows => Some("windows.zip")
+    | Others(_) => None
+    }
+
+    // find the corresponding asset
+    expectedSuffix
+    ->Option.flatMap(suffix => {
+      let matched = release.assets->Array.filter(asset => Js.String2.endsWith(asset.name, suffix))
+      matched[0]
+    })
+    ->Option.map(asset => {
+      Target.saveAsFileName: release.tag_name ++ "-" ++ NodeJs.Os.platform(),
+      release,
+      asset,
+    })
+  }
+
+  let useLatest = (platform: Platform.t, releases: array<Release.t>): option<Target.t> => {
+    let chooseLatestRelease = (releases: array<Release.t>) => {
+      // fetch the latest release
+      let compare = (x: Release.t, y: Release.t) => {
+        let xTime = Js.Date.getTime(Js.Date.fromString(x.created_at))
+        let yTime = Js.Date.getTime(Js.Date.fromString(y.created_at))
+        compare(yTime, xTime)
+      }
+      let sorted = Js.Array.sortInPlaceWith(compare, releases)
+      sorted[0]
+    }
+
+    chooseLatestRelease(releases)->Option.flatMap(chooseFromAssetBaseOnPlatform(platform, ...))
+  }
+
+  let chooseFromReleases = (platform: Platform.t, releases: array<Release.t>, tagName): option<
+    Target.t,
+  > => {
+    releases
+    ->Array.find(release => release.tag_name == tagName)
+    ->Option.flatMap(chooseFromAssetBaseOnPlatform(platform, ...))
+  }
+
+  let select = async (self, platform, releases) =>
+    switch self {
+    | UseLatest => useLatest(platform, releases)
+    | SpecifyVersion(version) => chooseFromReleases(platform, releases, version)
+    | Custom(f) => f(platform, releases)
+    }
+}
+
 module Repo = {
   type t = {
     username: string,
     repository: string,
     userAgent: string,
     globalStoragePath: string,
-    chooseFromReleases: array<Release.t> => option<Target.t>,
+    chooseFromReleases: LanguageServerSelector.t,
     onDownload: Download.Event.t => unit,
     afterDownload: (
       bool, // if is from cache
@@ -342,31 +450,24 @@ module Repo = {
 }
 
 module Module: {
-  type configs
-
-  let get: Repo.t => promise<
-    result<
-      (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
-      Error.t,
-    >,
-  >
+  let get: Repo.t => promise<result<(bool, Target.t), Error.t>>
 } = {
-  type configs = {
-    globalStoragePath?: string,
-    userAgent?: string,
-    cacheInvalidateExpirationSecs?: int,
-    log?: string => unit,
-    onDownload?: Download.Event.t => unit,
-    afterDownload?: (
-      bool,
-      (string, Target.t),
-    ) => promise<
-      result<
-        (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
-        Error.t,
-      >,
-    >,
-  }
+  // type configs = {
+  //   globalStoragePath?: string,
+  //   userAgent?: string,
+  //   cacheInvalidateExpirationSecs?: int,
+  //   log?: string => unit,
+  //   onDownload?: Download.Event.t => unit,
+  //   afterDownload?: (
+  //     bool,
+  //     (string, Target.t),
+  //   ) => promise<
+  //     result<
+  //       (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
+  //       Error.t,
+  //     >,
+  //   >,
+  // }
 
   let inFlightDownloadFileName = "in-flight.download"
 
@@ -439,7 +540,7 @@ module Module: {
         remove(inFlightDownloadPath ++ ".zip"),
       ])
       Error(error)
-    | Ok() => Ok((destPath, target))
+    | Ok() => Ok()
     }
   }
 
@@ -530,21 +631,6 @@ module Module: {
     }
   }
 
-  // let makeConfig = configs => {
-  //     let default = {
-  //       globalStoragePath: "./",
-  //       userAgent: "agda/agda-mode-vscode",
-  //       cacheInvalidateExpirationSecs: 86400, // 24 hours
-  //       log: x => Js.log(x), // use console.log by default,
-  //       }
-
-  //   switch configs {
-  //   | None =>  default
-  //   | Some(configs) => default
-  // }}
-
-  // let defaultGlobalStoragePath = "./"
-
   let get = async (repo: Repo.t) => {
     let ifIsDownloading = await isDownloading(repo.globalStoragePath)
     if ifIsDownloading {
@@ -553,19 +639,23 @@ module Module: {
       switch await getReleases(repo) {
       | Error(error) => Error(error)
       | Ok(releases) =>
-        switch repo.chooseFromReleases(releases) {
-        | None => Error(Error.NoMatchingRelease)
-        | Some(target) =>
-          // don't download from GitHub if `target.fileName` already exists
-          let destPath = NodeJs.Path.join2(repo.globalStoragePath, target.saveAsFileName)
-          if NodeJs.Fs.existsSync(destPath) {
-            repo.log("[ mule ] Used downloaded program at:" ++ destPath)
-            await repo.afterDownload(true, (destPath, target))
-          } else {
-            repo.log("[ mule ] Download from GitHub instead")
-            switch await downloadLanguageServer(repo, target) {
-            | Error(error) => Error(error)
-            | Ok(server) => await repo.afterDownload(false, server)
+        switch await Platform.determine() {
+        | Error(exn) => Error(Error.CannotDetermineOS(exn))
+        | Ok(platform) =>
+          switch await LanguageServerSelector.select(repo.chooseFromReleases, platform, releases) {
+          | None => Error(Error.NoMatchingRelease)
+          | Some(target) =>
+            // don't download from GitHub if `target.fileName` already exists
+            let destPath = NodeJs.Path.join2(repo.globalStoragePath, target.saveAsFileName)
+            if NodeJs.Fs.existsSync(destPath) {
+              repo.log("[ mule ] Used downloaded program at:" ++ destPath)
+              Ok((true, target))
+            } else {
+              repo.log("[ mule ] Download from GitHub instead")
+              switch await downloadLanguageServer(repo, target) {
+              | Error(error) => Error(error)
+              | Ok() => Ok((false, target))
+              }
             }
           }
         }

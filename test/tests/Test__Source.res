@@ -1,5 +1,4 @@
 open Mocha
-open Test__Util
 
 describe("Path Searching", () => {
   describe("`Source.search` with `FromFile`", () => {
@@ -154,103 +153,94 @@ describe("Path Searching", () => {
   })
 
   describe("`Source.search` with `FromGitHub`", () => {
-    // set timeout to 60 seconds because we are downloading stuff
-    This.timeout(60000)
+    open Source.GitHub
     // so that we can delete the whole directory after the test
     let downloadDirRef = ref(None)
 
+    let afterDownload = async (isCached, (path, target)) => {
+      // include "Agda_datadir" in the environment variable
+      let options = {
+        let assetPath = NodeJs.Path.join2(path, "data")
+        let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
+        {
+          LanguageServerMule.Client__LSP__Binding.env: env,
+        }
+      }
+      // chmod the executable after download
+      // no need to chmod if:
+      //    1. it's cached, already chmoded
+      //  or
+      //    2. it's on Windows
+      let execPath = NodeJs.Path.join2(path, "als")
+      let shouldChmod = !isCached && NodeJs.Os.platform() != "win32"
+      if shouldChmod {
+        let _ = await chmodExecutable(execPath)
+      }
+
+      // store the download path for cleanup
+      downloadDirRef := Some(path)
+
+      Ok((execPath, [], Some(options), target))
+    }
+
+    let repo = {
+      Repo.username: "agda",
+      repository: "agda-language-server",
+      userAgent: "agda/agda-mode-vscode",
+      globalStoragePath: "./",
+      chooseFromReleases: SpecifyVersion("v0.2.6.4.0.3"),
+      onDownload: _ => (),
+      afterDownload,
+      log: x => Js.log(x),
+      cacheInvalidateExpirationSecs: 86400,
+    }
+
     Async.it(
-      "for GitHub release that exists",
+      "download v0.2.6.4.0.3 from GitHub the first time",
       async () => {
-        open Source.GitHub
+        // set timeout to 600 seconds because we are downloading stuff for the first time
+        This.timeout(600000)
 
-        let chooseFromReleases = (platform: Platform.t, releases: array<Release.t>): option<
-          Target.t,
-        > => {
-          let _chooseLatestRelease = (releases: array<Release.t>) => {
-            // fetch the latest release
-            let compare = (x: Release.t, y: Release.t) => {
-              let xTime = Js.Date.getTime(Js.Date.fromString(x.created_at))
-              let yTime = Js.Date.getTime(Js.Date.fromString(y.created_at))
-              compare(yTime, xTime)
-            }
-            let sorted = Js.Array.sortInPlaceWith(compare, releases)
-            sorted[0]
+        switch await Source.search(Source.FromGitHub(repo)) {
+        | Error(err) => Exn.raiseError(Source.Error.toString(err))
+        | Ok(ViaPipe(command, args, options, source)) =>
+          let downloadDir = switch downloadDirRef.contents {
+          | Some(path) => path
+          | None => Exn.raiseError("Expected download path")
           }
 
-          let v0_2_6_4_0_3 = releases->Array.find(release => release.tag_name == "v0.2.6.4.0.3")
+          // `command` should be the path to the download directory + "/als"
+          Assert.deepEqual(command, NodeJs.Path.join2(downloadDir, "als"))
+          // no arguments supplied in this test case
+          Assert.deepEqual(args, [])
+          // `options` should include "Agda_datadir" in the environment variable
+          let expectedOptions = Some({
+            LanguageServerMule.Client__LSP__Binding.env: Dict.fromArray([
+              ("Agda_datadir", NodeJs.Path.join2(downloadDir, "data")),
+            ]),
+          })
+          Assert.deepEqual(options, expectedOptions)
 
-          let chooseFromAsset = (release: Release.t) => {
-            // expected suffix of asset name
-            let expectedSuffix = switch platform {
-            | MacOS => Some("macos.zip")
-            | Ubuntu => Some("ubuntu.zip")
-            | Windows => Some("windows.zip")
-            | Others(_) => None
-            }
-
-            // find the corresponding asset
-            expectedSuffix
-            ->Option.flatMap(
-              suffix => {
-                let matched =
-                  release.assets->Array.filter(asset => Js.String2.endsWith(asset.name, suffix))
-                matched[0]
-              },
-            )
-            ->Option.map(
-              asset => {
-                Target.saveAsFileName: release.tag_name ++ "-" ++ NodeJs.Os.platform(),
-                release,
-                asset,
-              },
-            )
+          switch source {
+          | FromGitHub(repo, release, _) =>
+            Assert.deepEqual(repo.username, "agda")
+            Assert.deepEqual(repo.repository, "agda-language-server")
+            Assert.deepEqual(repo.userAgent, "agda/agda-mode-vscode")
+            Assert.deepEqual(repo.globalStoragePath, "./")
+            Assert.deepEqual(release.tag_name, "v0.2.6.4.0.3")
+          | _ => Exn.raiseError("Expected FromGitHub")
           }
 
-          // chooseLatestRelease(releases)->Option.flatMap(chooseAsset)
-          v0_2_6_4_0_3->Option.flatMap(chooseFromAsset)
+        | Ok(ViaTCP(_)) => Exn.raiseError("Expected ViaPipe")
         }
+      },
+    )
 
-        let afterDownload = async (fromCached, (path, target)) => {
-          let execPath = NodeJs.Path.join2(path, "als")
-          // include "Agda_datadir" in the environment variable
-          let options = {
-            let assetPath = NodeJs.Path.join2(path, "data")
-            let env = Js.Dict.fromArray([("Agda_datadir", assetPath)])
-            {
-              LanguageServerMule.Client__LSP__Binding.env: env,
-            }
-          }
-          // because it should've been chmod'ed after download
-          // because there's no need of chmod'ing on Windows
-          let shouldChmod777 = !fromCached && NodeJs.Os.platform() != "win32"
-          if shouldChmod777 {
-            let _ = await chmodExecutable(execPath)
-          }
-
-          // store the download path for cleanup
-          downloadDirRef := Some(path)
-
-          Ok((execPath, [], Some(options), target))
-        }
-
-        let platform = switch await Platform.determine() {
-        | Ok(platform) => platform
-        | Error(exn) => Exn.raiseError(Util.JsError.toString(exn))
-        }
-
-        let repo = {
-          Repo.username: "agda",
-          repository: "agda-language-server",
-          userAgent: "agda/agda-mode-vscode",
-          globalStoragePath: "./",
-          chooseFromReleases: chooseFromReleases(platform, ...),
-          onDownload: _ => (),
-          afterDownload,
-          log: x => Js.log(x),
-          cacheInvalidateExpirationSecs: 86400,
-        }
-
+    Async.it(
+      "download v0.2.6.4.0.3 from GitHub the second time",
+      async () => {
+        // set timeout to only 1 seconds because we are downloading stuff for the second time
+        This.timeout(1000)
         switch await Source.search(Source.FromGitHub(repo)) {
         | Error(err) => Exn.raiseError(Source.Error.toString(err))
         | Ok(ViaPipe(command, args, options, source)) =>
