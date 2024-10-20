@@ -6,7 +6,7 @@ describe("Process Interface", () => {
       "should trigger `close`",
       async () => {
         let process = Client.Process.make("echo", ["hello"])
-        let (promise, resolve, reject) = Util.pending()
+        let (promise, resolve, reject) = Util.Promise.pending()
         let destructor = process->Client.Process.onOutput(
           output => {
             switch output {
@@ -31,7 +31,7 @@ describe("Process Interface", () => {
       "should trigger receive something from stderr",
       async () => {
         let process = Client.Process.make("echooo", ["hello"])
-        let (promise, resolve, reject) = Util.pending()
+        let (promise, resolve, reject) = Util.Promise.pending()
 
         let destructor = process->Client.Process.onOutput(
           output => {

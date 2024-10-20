@@ -318,7 +318,7 @@ module Platform = {
     external getos: (('e, t) => unit) => unit = "getos"
 
     let run = (): promise<t> => {
-      let (promise, resolve, reject) = Util.pending()
+      let (promise, resolve, reject) = Util.Promise.pending()
       getos((e, os) => {
         let e = Js.Nullable.toOption(e)
         switch e {
