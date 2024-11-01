@@ -27,13 +27,14 @@ try {
   runTests({
     extensionDevelopmentPath,
     extensionTestsPath,
-  })->Promise.finally(() => {
+  })
+  ->Promise.finally(() => {
     NodeJs.Process.process->NodeJs.Process.exitWithCode(0)
-  })->ignore
+  })
+  ->ignore
 } catch {
 | error =>
   Js.log(error)
   Js.log("Failed to run tests")
   NodeJs.Process.process->NodeJs.Process.exitWithCode(1)
 }
-

@@ -118,7 +118,7 @@ module type Module = {
     | Stdout(string)
     | Stderr(string)
     | Event(Event.t)
-  let onOutput: (t, output => unit) => (unit => unit)
+  let onOutput: (t, output => unit) => unit => unit
 }
 module Module: Module = {
   type output =
@@ -169,18 +169,17 @@ module Module: Module = {
 
     // on `close` from `stdin` or `process`
     let promiseOnClose = Promise.make((resolve, _) => {
-          process
-          ->NodeJs.ChildProcess.stdin
-          ->Option.forEach(stream =>
-            stream
-            ->NodeJs.Stream.Writable.onClose(() => resolve((path, args, 0, stderr.contents)))
-            ->ignore
-          )
-
-        process
-        ->NodeJs.ChildProcess.onClose(code => resolve((path, args, code, stderr.contents)))
+      process
+      ->NodeJs.ChildProcess.stdin
+      ->Option.forEach(stream =>
+        stream
+        ->NodeJs.Stream.Writable.onClose(() => resolve((path, args, 0, stderr.contents)))
         ->ignore
+      )
 
+      process
+      ->NodeJs.ChildProcess.onClose(code => resolve((path, args, code, stderr.contents)))
+      ->ignore
     })
 
     // on errors and anomalies
@@ -196,9 +195,11 @@ module Module: Module = {
     ->ignore
 
     // emit `OnExit` when either `close` or `exit` was received
-    Promise.race([promiseOnExit, promiseOnClose])->Promise.thenResolve(((path, args, exitCode, stderr)) =>
+    Promise.race([promiseOnExit, promiseOnClose])
+    ->Promise.thenResolve(((path, args, exitCode, stderr)) => {
       chan->Chan.emit(Event(OnExit(path, args, exitCode, stderr)))
-    )->ignore
+    })
+    ->ignore
 
     {chan, status: Created(process)}
   }
@@ -208,20 +209,20 @@ module Module: Module = {
     | Created(process) =>
       // set the status to "Destroying"
       // let (promise, resolve) = Promise.pending()
-      let promise = Promise.make ((resolve, _) => {
-          // listen to the `exit` event
-          let _ = self.chan->Chan.on(x =>
-            switch x {
-            | Event(OnExit(_, _, _, _)) =>
-              self.chan->Chan.destroy
-              self.status = Destroyed
-              resolve()
-            | _ => ()
-            }
-          )
+      let promise = Promise.make((resolve, _) => {
+        // listen to the `exit` event
+        let _ = self.chan->Chan.on(x =>
+          switch x {
+          | Event(OnExit(_, _, _, _)) =>
+            self.chan->Chan.destroy
+            self.status = Destroyed
+            resolve()
+          | _ => ()
+          }
+        )
 
-          // trigger `exit`
-          NodeJs.ChildProcess.kill(process, "SIGTERM")
+        // trigger `exit`
+        NodeJs.ChildProcess.kill(process, "SIGTERM")
       })
       self.status = Destroying(promise)
       promise
@@ -232,10 +233,14 @@ module Module: Module = {
   let send = (self, request): bool => {
     switch self.status {
     | Created(process) =>
-      let payload = NodeJs.Buffer.fromString(request ++ "\n")
+      let payload = NodeJs.Buffer.fromString(request ++ NodeJs.Os.eol)
       process
       ->NodeJs.ChildProcess.stdin
-      ->Option.forEach(stream => stream->NodeJs.Stream.Writable.write(payload)->ignore)
+      ->Option.forEach(stream =>
+        stream
+        ->NodeJs.Stream.Writable.write(payload)
+        ->ignore
+      )
       true
     | _ => false
     }
