@@ -30,31 +30,34 @@ module Nd = {
         })
       })
 
-    @module("fs")
-    external readFile_raw: (string, (Js.null<Js.Exn.t>, NodeJs.Buffer.t) => unit) => unit =
-      "readFile"
-    let readFile = path =>
-      Promise.make((resolve, _) => {
-        readFile_raw(path, (error, buffer) => {
-          switch Js.nullToOption(error) {
-          | None => resolve(Ok(buffer))
-          | Some(error) => resolve(Error(error))
-          }
-        })
-      })
+    let readFile = async filepath => {
+      let fileHandle = await NodeJs.Fs.open_(filepath, NodeJs.Fs.Flag.read)
+      let buffer = await NodeJs.Fs.FileHandle.readFile(fileHandle)
+      await NodeJs.Fs.FileHandle.close(fileHandle)
+      NodeJs.Buffer.toString(buffer)
+    }
 
-    @module("fs")
-    external writeFile_raw: (string, NodeJs.Buffer.t, Js.null<Js.Exn.t> => unit) => unit =
-      "writeFile"
-    let writeFile = (path, data) =>
-      Promise.make((resolve, _) => {
-        writeFile_raw(path, data, error => {
-          switch Js.nullToOption(error) {
-          | None => resolve(Ok())
-          | Some(error) => resolve(Error(error))
-          }
-        })
-      })
+    // @module("fs")
+    // external writeFile_raw: (string, NodeJs.Buffer.t, Js.null<Js.Exn.t> => unit) => unit =
+    //   "writeFile"
+    // let writeFile = (path, data) =>
+    //   Promise.make((resolve, _) => {
+    //     writeFile_raw(path, data, error => {
+    //       switch Js.nullToOption(error) {
+    //       | None => resolve(Ok())
+    //       | Some(error) => resolve(Error(error))
+    //       }
+    //     })
+    //   })
+
+    let writeFile = async (filepath, string) => {
+      let fileHandle = await NodeJs.Fs.open_(filepath, NodeJs.Fs.Flag.write)
+      let buffer = await NodeJs.Fs.FileHandle.writeFile(
+        fileHandle,
+        NodeJs.Buffer.fromString(string),
+      )
+      await NodeJs.Fs.FileHandle.close(fileHandle)
+    }
 
     @module("fs")
     external createWriteStream: string => NodeJs.Fs.WriteStream.t = "createWriteStream"
@@ -91,7 +94,7 @@ module Error = {
     | CannotReadFile(Js.Exn.t)
     | CannotDeleteFile(Js.Exn.t)
     | CannotRenameFile(Js.Exn.t)
-    // OS 
+    // OS
     | CannotDetermineOS(Js.Exn.t)
 
   let toString = x =>
@@ -357,7 +360,8 @@ module Platform = {
 
 // strategy for selecting the language server from the releases
 module LanguageServerSelector = {
-  type t = UseLatest | SpecifyVersion(string) | Custom((Platform.t, array<Release.t>) => option<Target.t>)
+  type t =
+    UseLatest | SpecifyVersion(string) | Custom((Platform.t, array<Release.t>) => option<Target.t>)
 
   // helper function for selecting the asset based on the platform
   let chooseFromAssetBaseOnPlatform = (platform: Platform.t, release: Release.t) => {
@@ -590,12 +594,10 @@ module Module: {
     }
 
     let persist = async (self, releases) => {
-      let json = Release.encodeReleases(releases)->Js_json.stringify->NodeJs.Buffer.fromString
+      let json = Release.encodeReleases(releases)->Js_json.stringify
       let path = cachePath(self)
-      switch await Nd.Fs.writeFile(path, json) {
-      | Error(e) => Error(Error.CannotCacheReleases(e))
-      | Ok() => Ok(releases) // pass it on for chaining
-      }
+      await Nd.Fs.writeFile(path, json)
+      Ok(releases) // pass it on for chaining
     }
   }
 
@@ -608,19 +610,15 @@ module Module: {
       repo.log("[ mule ] Use cached releases data at:" ++ path)
 
       // read file and decode as json
-      switch await Nd.Fs.readFile(path) {
-      | Error(e) => Error(Error.CannotRenameFile(e))
-      | Ok(buffer) =>
-        let string = NodeJs.Buffer.toString(buffer)
-        switch Js.Json.parseExn(string) {
-        | json =>
-          // parse the json
-          switch Release.decodeReleases(json) {
-          | Error(e) => Error(e)
-          | Ok(releases) => Ok(releases)
-          }
-        | exception _ => Error(Error.JsonParseError(string))
+      let string = await Nd.Fs.readFile(path)
+      switch Js.Json.parseExn(string) {
+      | json =>
+        // parse the json
+        switch Release.decodeReleases(json) {
+        | Error(e) => Error(e)
+        | Ok(releases) => Ok(releases)
         }
+      | exception _ => Error(Error.JsonParseError(string))
       }
     } else {
       repo.log("[ mule ] GitHub releases cache invalidated")

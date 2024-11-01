@@ -17,58 +17,65 @@ module Error = {
     }
 }
 
-// the command we use for searching the path
-let whichCommand = switch NodeJs.Os.type_() {
-| "Linux"
-| "Darwin" =>
-  Ok("which")
-| "Windows_NT" => Ok("where.exe")
-| os => Error(os)
-}
-
-let search = (name): promise<result<string, Error.t>> =>
+// search for the executable in PATH with the given tool like `which` or `where.exe`
+let searchWithCommand = (command, name): promise<result<string, Error.t>> =>
   Promise.make((resolve, _) => {
     // reject if the process hasn't responded for more than 1 second
     let hangTimeout = Js.Global.setTimeout(() => resolve(Error(Error.NotResponding)), 1000)
 
-    switch whichCommand {
-    | Error(os) => resolve(Error(NotSupported(os)))
-    | Ok(whichCommand) =>
-      NodeJs.ChildProcess.execWith(whichCommand ++ " " ++ name, %raw(`{shell : true}`), (
-        error,
-        stdout,
-        stderr,
-      ) => {
-        // clear timeout as the process has responded
-        Js.Global.clearTimeout(hangTimeout)
-        // error
-        error
-        ->Js.Nullable.toOption
-        ->Option.forEach(
-          err => {
-            let isNotFound =
-              Js.Exn.message(err)->Option.mapOr(false, a => Js.String.startsWith("Command failed: " ++ whichCommand ++ " " ++ name ++ "\n", a))
-            if isNotFound {
-              resolve(Error(NotFound))
-            } else {
-              resolve(Error(OnError(err)))
-            }
-          },
-        )
+    NodeJs.ChildProcess.execWith(command ++ " " ++ name, %raw(`{shell : true}`), (
+      error,
+      stdout,
+      stderr,
+    ) => {
+      // clear timeout as the process has responded
+      Js.Global.clearTimeout(hangTimeout)
+      // error
+      error
+      ->Js.Nullable.toOption
+      ->Option.forEach(
+        err => {
+          let isNotFound =
+            Js.Exn.message(err)->Option.mapOr(
+              false,
+              a => Js.String.startsWith("Command failed: " ++ command ++ " " ++ name ++ "\n", a),
+            )
+          if isNotFound {
+            resolve(Error(NotFound))
+          } else {
+            resolve(Error(OnError(err)))
+          }
+        },
+      )
 
-        // stderr
-        let stderr = NodeJs.Buffer.toString(stderr)
-        if stderr != "" {
-          resolve(Error(OnStderr(stderr)))
-        }
+      // stderr
+      let stderr = NodeJs.Buffer.toString(stderr)
+      if stderr != "" {
+        resolve(Error(OnStderr(stderr)))
+      }
 
-        // stdout
-        let stdout = NodeJs.Buffer.toString(stdout)->String.trim
-        if stdout == "" || stdout == name ++ " not found" {
-          resolve(Error(NotFound))
-        } else {
-          resolve(Ok(stdout))
-        }
-      })->ignore
-    }
+      // stdout
+      let stdout = NodeJs.Buffer.toString(stdout)->String.trim
+      if stdout == "" || stdout == name ++ " not found" {
+        resolve(Error(NotFound))
+      } else {
+        resolve(Ok(stdout))
+      }
+    })->ignore
   })
+
+// search for the executable in PATH
+let search = async (name): result<string, Error.t> => {
+  switch NodeJs.Os.type_() {
+  | "Linux"
+  | "Darwin" =>
+    await searchWithCommand("which", name)
+  | "Windows_NT" =>
+    // try `which` first, then `where.exe`
+    switch await searchWithCommand("which", name) {
+    | Ok(stdout) => Ok(stdout)
+    | Error(_) => await searchWithCommand("where.exe", name)
+    }
+  | os => Error(NotSupported(os))
+  }
+}
