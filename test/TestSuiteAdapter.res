@@ -30,7 +30,7 @@ let run = () => {
 
   let testsRoot = NodeJs.Path.resolve([NodeJs.Global.dirname, "tests"])
 
-  Js.Promise.make((~resolve, ~reject) =>
+  Promise.make((resolve, reject) => {
     Glob.glob("**/*.js", {cwd: testsRoot}, (err, files) =>
       switch Js.Nullable.toOption(err) {
       | Some(err) => reject(err)
@@ -54,5 +54,5 @@ let run = () => {
         }
       }
     )
-  )
+  })
 }

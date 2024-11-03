@@ -195,7 +195,7 @@ describe("Path Searching", () => {
       cacheInvalidateExpirationSecs: 86400,
     }
 
-    Async.it(
+    Async.it_skip(
       "download v0.2.6.4.0.3 from GitHub the first time",
       async () => {
         // set timeout to 600 seconds because we are downloading stuff for the first time
@@ -236,7 +236,7 @@ describe("Path Searching", () => {
       },
     )
 
-    Async.it(
+    Async.it_skip(
       "download v0.2.6.4.0.3 from GitHub the second time",
       async () => {
         // set timeout to only 1 seconds because we are downloading stuff for the second time

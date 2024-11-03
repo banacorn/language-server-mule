@@ -6,7 +6,7 @@
   "scripts": {
     "build": "npx rescript",
     "start": "npx rescript build -w",
-    "test": "npx mocha lib/js/test"
+    "test": "node lib/js/test/RunTestFromCLI.bs.js"
   },
   "repository": {
     "type": "git",
