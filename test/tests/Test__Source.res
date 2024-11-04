@@ -113,7 +113,7 @@ describe("Path Searching", () => {
     )
 
     Async.it(
-      "for TCP server that doesn't exist",
+      "for local TCP server that doesn't exist",
       async () => {
         switch await Source.search(FromTCP(23457, "localhost"), ~timeout=1000) {
         | Error(error) =>
@@ -128,7 +128,7 @@ describe("Path Searching", () => {
     )
 
     Async.it(
-      "for TCP server that doesn't exist",
+      "for remote TCP server that doesn't exist",
       async () => {
         switch await Source.search(FromTCP(23457, "remotehost"), ~timeout=1000) {
         | Error(error) =>
@@ -295,6 +295,7 @@ describe("Path Searching", () => {
 
     Async.after(
       async () => {
+        // remove the cache file and the download file
         try {
           NodeJs.Fs.unlinkSync("releases-cache.json")
           NodeJs.Fs.unlinkSync("in-flight.download")
@@ -302,7 +303,8 @@ describe("Path Searching", () => {
         | _ => ()
         }
         switch downloadDirRef.contents {
-        | Some(path) => await Source__GitHub.Nd.Fs.rmWithOptions(path, {recursive: true})
+        | Some(path) =>
+          await Source__GitHub.Nd.Fs.rmWithOptions(path, {recursive: true, force: true})
         | None => ()
         }
       },

@@ -67,6 +67,7 @@ module Nd = {
       "createWriteStream"
 
     type rmOptions = {
+      force?: bool,
       maxRetries?: int,
       recursive?: bool,
       retryDelay?: int,
