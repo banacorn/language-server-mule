@@ -14,7 +14,7 @@ module Error = {
   type t =
     | File(string) // path of the program
     | Command(string, Command.Error.t) // name of the command, error
-    | TCP(int, string, Js.Exn.t) // port, host, error
+    | TCP(int, string, TCP.Error.t) // port, host, error
     | GitHub(GitHub.Error.t)
 
   let toString = error =>
@@ -28,7 +28,7 @@ module Error = {
       ":" ++
       string_of_int(port) ++
       " : " ++
-      Util.JsError.toString(e)
+      TCP.Error.toString(e)
     | GitHub(e) => "Trying to download prebuilt from GitHub: " ++ GitHub.Error.toString(e)
     }
 }
@@ -50,7 +50,7 @@ module Module: {
         Error(Error.File(path))
       }
     | FromCommand(name) =>
-      switch await Command.search(name) {
+      switch await Command.search(name, ~timeout) {
       | Error(e) => Error(Error.Command(name, e))
       | Ok(path) => Ok(Method.ViaPipe(path, [], None, FromCommand(name)))
       }

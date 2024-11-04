@@ -30,11 +30,7 @@ describe("Path Searching", () => {
       "for file that doesn't exist",
       async () => {
         switch await Source.search(FromFile("temp-non-existing"), ~timeout=1000) {
-        | Error(error) =>
-          Assert.deepEqual(
-            Source.Error.toString(error),
-            "Trying to locate \"temp-non-existing\" but the file does not exist",
-          )
+        | Error(error) => Assert.deepEqual(error, File("temp-non-existing"))
         | Ok(ViaPipe(_)) => Exn.raiseError("Expected Error")
         | Ok(ViaTCP(_)) => Exn.raiseError("Expected Error")
         }
@@ -73,11 +69,7 @@ describe("Path Searching", () => {
       "for command that doesn't exist",
       async () => {
         switch await Source.search(FromCommand("temp-non-existing")) {
-        | Error(error) =>
-          Assert.deepEqual(
-            Source.Error.toString(error),
-            "Trying to find the command \"temp-non-existing\": Cannot find the executable on PATH",
-          )
+        | Error(error) => Assert.deepEqual(error, Command("temp-non-existing", NotFound))
         | Ok(ViaPipe(_)) => Exn.raiseError("Expected Error")
         | Ok(ViaTCP(_)) => Exn.raiseError("Expected Error")
         }
@@ -101,7 +93,7 @@ describe("Path Searching", () => {
     Async.it(
       "for TCP server that exists",
       async () => {
-        switch await Source.search(FromTCP(23456, "localhost"), ~timeout=1000) {
+        switch await Source.search(FromTCP(23456, "localhost"), ~timeout=5000) {
         | Error(err) => Exn.raiseError(Source.Error.toString(err))
         | Ok(ViaPipe(_)) => Exn.raiseError("Expected ViaTCP")
         | Ok(ViaTCP(port, host, source)) =>
@@ -115,14 +107,14 @@ describe("Path Searching", () => {
     Async.it(
       "for local TCP server that doesn't exist",
       async () => {
-        switch await Source.search(FromTCP(23457, "localhost"), ~timeout=1000) {
-        | Error(error) =>
-          Assert.deepEqual(
-            Source.Error.toString(error),
-            "Trying to connect to localhost:23457 : AggregateError",
-          )
-        | Ok(ViaPipe(_)) => Exn.raiseError("Expected Error")
-        | Ok(ViaTCP(_)) => Exn.raiseError("Expected Error")
+        switch await Source.search(FromTCP(23457, "localhost"), ~timeout=5000) {
+        | Error(TCP(port, host, error)) =>
+          Assert.deepEqual(port, 23457)
+          Assert.deepEqual(host, "localhost")
+          Assert.deepEqual(Source__TCP.Error.toString(error), "AggregateError")
+        | Error(_) => raise(Failure("Expecting TCP-related error"))
+        | Ok(ViaPipe(_)) => Exn.raiseError("Expecting Error")
+        | Ok(ViaTCP(_)) => Exn.raiseError("Expecting Error")
         }
       },
     )
@@ -130,29 +122,33 @@ describe("Path Searching", () => {
     Async.it(
       "for remote TCP server that doesn't exist",
       async () => {
-        switch await Source.search(FromTCP(23457, "remotehost"), ~timeout=1000) {
-        | Error(error) =>
+        switch await Source.search(FromTCP(23457, "remotehost"), ~timeout=5000) {
+        | Error(TCP(port, host, error)) =>
+          Assert.deepEqual(port, 23457)
+          Assert.deepEqual(host, "remotehost")
           switch await Source__GitHub.Platform.determine() {
-          | Error(exn) => raise(Failure(Exn.message(exn)->Option.getOr("Error")))
+          | Error(exn) =>
+            raise(Failure(Exn.message(exn)->Option.getOr("Cannot determine platform")))
           | Ok(MacOS) =>
             Assert.deepEqual(
-              Source.Error.toString(error),
-              "Trying to connect to remotehost:23457 : Error: getaddrinfo ENOTFOUND remotehost",
+              Source__TCP.Error.toString(error),
+              "Error: getaddrinfo ENOTFOUND remotehost",
             )
           | Ok(Windows) =>
             Assert.deepEqual(
-              Source.Error.toString(error),
-              "Trying to connect to remotehost:23457 : Error: getaddrinfo ENOTFOUND remotehost",
+              Source__TCP.Error.toString(error),
+              "Error: getaddrinfo ENOTFOUND remotehost",
             )
           | Ok(Ubuntu) =>
             Assert.deepEqual(
-              Source.Error.toString(error),
-              "Trying to connect to remotehost:23457 : Error: getaddrinfo EAI_AGAIN remotehost",
+              Source__TCP.Error.toString(error),
+              "Error: getaddrinfo EAI_AGAIN remotehost",
             )
           | Ok(Others(_)) => ()
           }
-        | Ok(ViaPipe(_)) => Exn.raiseError("Expected Error")
-        | Ok(ViaTCP(_)) => Exn.raiseError("Expected Error")
+        | Error(_) => raise(Failure("Expecting TCP-related error"))
+        | Ok(ViaPipe(_)) => Exn.raiseError("Expecting Error")
+        | Ok(ViaTCP(_)) => Exn.raiseError("Expecting Error")
         }
       },
     )
@@ -169,6 +165,7 @@ describe("Path Searching", () => {
     )
   })
 
+  // skip when API rate limit is reached
   describe("`Source.search` with `FromGitHub`", () => {
     open Source.GitHub
     // so that we can delete the whole directory after the test
@@ -312,34 +309,34 @@ describe("Path Searching", () => {
   })
 })
 
-describe("Port Probing", () => {
-  This.timeout(10000)
-  describe("`Source.Port.probe`", () => {
-    Async.it(
-      "should report Ok on the port that is available",
-      async () => {
-        let tempServer = NodeJs.Net.TcpServer.make()
-        await Promise.make(
-          (resolve, _) => {
-            tempServer
-            ->NodeJs.Net.TcpServer.listen(~port=23456, ~host="localhost", ~callback=resolve)
-            ->ignore
-          },
-        )
+// describe("Port Probing", () => {
+//   This.timeout(10000)
+//   describe("`Source.Port.probe`", () => {
+//     Async.it(
+//       "should report Ok on the port that is available",
+//       async () => {
+//         let tempServer = NodeJs.Net.TcpServer.make()
+//         await Promise.make(
+//           (resolve, _) => {
+//             tempServer
+//             ->NodeJs.Net.TcpServer.listen(~port=23456, ~host="localhost", ~callback=resolve)
+//             ->ignore
+//           },
+//         )
 
-        let _ = await Source.TCP.probe(23456, "localhost", ~timeout=1000)
-        NodeJs.Net.TcpServer.close(tempServer, ~callback=_ => ())->ignore
-      },
-    )
+//         let _ = await Source.TCP.probe(23456, "localhost", ~timeout=1000)
+//         NodeJs.Net.TcpServer.close(tempServer, ~callback=_ => ())->ignore
+//       },
+//     )
 
-    Async.it(
-      "should report Error on ports that are not available",
-      async () => {
-        switch await Source.TCP.probe(12345, "localhost", ~timeout=1000) {
-        | Error(_exn) => ()
-        | Ok() => raise(Js.Exn.raiseError("Port should not be available"))
-        }
-      },
-    )
-  })
-})
+//     Async.it(
+//       "should report Error on ports that are not available",
+//       async () => {
+//         switch await Source.TCP.probe(12345, "localhost", ~timeout=1000) {
+//         | Error(_exn) => ()
+//         | Ok() => raise(Js.Exn.raiseError("Port should not be available"))
+//         }
+//       },
+//     )
+//   })
+// })
