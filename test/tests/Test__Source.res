@@ -130,10 +130,25 @@ describe("Path Searching", () => {
       async () => {
         switch await Source.search(FromTCP(23457, "remotehost")) {
         | Error(error) =>
-          Assert.deepEqual(
-            Source.Error.toString(error),
-            "Trying to connect to remotehost:23457 : Error: getaddrinfo ENOTFOUND remotehost",
-          )
+          switch await Source__GitHub.Platform.determine() {
+          | Error(exn) => raise(Failure(Exn.message(exn)->Option.getOr("Error")))
+          | Ok(MacOS) =>
+            Assert.deepEqual(
+              Source.Error.toString(error),
+              "Trying to connect to remotehost:23457 : Error: getaddrinfo ENOTFOUND remotehost",
+            )
+          | Ok(Windows) =>
+            Assert.deepEqual(
+              Source.Error.toString(error),
+              "Trying to connect to remotehost:23457 : Error: getaddrinfo ENOTFOUND remotehost",
+            )
+          | Ok(Ubuntu) =>
+            Assert.deepEqual(
+              Source.Error.toString(error),
+              "Trying to connect to remotehost:23457 : Error: getaddrinfo EAI_AGAIN remotehost",
+            )
+          | Ok(Others(_)) => ()
+          }
         | Ok(ViaPipe(_)) => Exn.raiseError("Expected Error")
         | Ok(ViaTCP(_)) => Exn.raiseError("Expected Error")
         }
