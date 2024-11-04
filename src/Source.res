@@ -34,14 +34,14 @@ module Error = {
 }
 
 module Module: {
-  let search: t => promise<result<Method.t, Error.t>>
+  let search: (t, ~timeout: int=?) => promise<result<Method.t, Error.t>>
   // returns `Method.t` if any is found, and errors of previous searches
   let searchUntilSuccess: array<t> => promise<(option<Method.t>, array<Error.t>)>
   // helper function for consuming results from `searchUntilSuccess`
   let consumeResult: ((option<Method.t>, array<Error.t>)) => result<Method.t, array<Error.t>>
 } = {
   // returns the method of IPC if successful
-  let search = async source =>
+  let search = async (source, ~timeout=1000) =>
     switch source {
     | FromFile(path) =>
       if File.probe(path) {
@@ -55,7 +55,7 @@ module Module: {
       | Ok(path) => Ok(Method.ViaPipe(path, [], None, FromCommand(name)))
       }
     | FromTCP(port, host) =>
-      switch await TCP.probe(port, host) {
+      switch await TCP.probe(port, host, ~timeout) {
       | Error(e) => Error(Error.TCP(port, host, e))
       | Ok() => Ok(Method.ViaTCP(port, host, FromTCP(port, host)))
       }

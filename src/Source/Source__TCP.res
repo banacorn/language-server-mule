@@ -1,8 +1,13 @@
 open NodeJs.Net
 
 // see if the TCP port is available
-let probe = (port, host) => {
-  Promise.make((resolve, _) => {
+let probe = (port, host, ~timeout=1000) => {
+  let timeout = async () => {
+    await Util.Promise.setTimeout(timeout)
+    Error(Js.Exn.raiseError("timeout"))
+  }
+
+  let connection = Promise.make((resolve, _) => {
     // connect and resolve `Ok()` on success
     let socket = NodeJs.Net.TcpSocket.make()
 
@@ -14,6 +19,9 @@ let probe = (port, host) => {
       resolve(Ok())
     })
     ->NodeJs.Net.Socket.onErrorOnce(exn => resolve(Error(exn)))
+    ->NodeJs.Net.Socket.onTimeoutOnce(() => resolve(Error(Js.Exn.raiseError("timeout"))))
     ->ignore
   })
+
+  Promise.race([connection, timeout()])
 }

@@ -1,6 +1,8 @@
 open Mocha
 
 describe("Path Searching", () => {
+  This.timeout(10000)
+
   describe("`Source.search` with `FromFile`", () => {
     Async.before(
       async () => {
@@ -12,7 +14,7 @@ describe("Path Searching", () => {
     Async.it(
       "for file that exists",
       async () => {
-        switch await Source.search(FromFile("temp")) {
+        switch await Source.search(FromFile("temp"), ~timeout=1000) {
         | Error(err) => Exn.raiseError(Source.Error.toString(err))
         | Ok(ViaPipe(command, args, options, source)) =>
           Assert.deepEqual(command, "temp")
@@ -27,7 +29,7 @@ describe("Path Searching", () => {
     Async.it(
       "for file that doesn't exist",
       async () => {
-        switch await Source.search(FromFile("temp-non-existing")) {
+        switch await Source.search(FromFile("temp-non-existing"), ~timeout=1000) {
         | Error(error) =>
           Assert.deepEqual(
             Source.Error.toString(error),
@@ -99,7 +101,7 @@ describe("Path Searching", () => {
     Async.it(
       "for TCP server that exists",
       async () => {
-        switch await Source.search(FromTCP(23456, "localhost")) {
+        switch await Source.search(FromTCP(23456, "localhost"), ~timeout=1000) {
         | Error(err) => Exn.raiseError(Source.Error.toString(err))
         | Ok(ViaPipe(_)) => Exn.raiseError("Expected ViaTCP")
         | Ok(ViaTCP(port, host, source)) =>
@@ -113,7 +115,7 @@ describe("Path Searching", () => {
     Async.it(
       "for TCP server that doesn't exist",
       async () => {
-        switch await Source.search(FromTCP(23457, "localhost")) {
+        switch await Source.search(FromTCP(23457, "localhost"), ~timeout=1000) {
         | Error(error) =>
           Assert.deepEqual(
             Source.Error.toString(error),
@@ -128,7 +130,7 @@ describe("Path Searching", () => {
     Async.it(
       "for TCP server that doesn't exist",
       async () => {
-        switch await Source.search(FromTCP(23457, "remotehost")) {
+        switch await Source.search(FromTCP(23457, "remotehost"), ~timeout=1000) {
         | Error(error) =>
           switch await Source__GitHub.Platform.determine() {
           | Error(exn) => raise(Failure(Exn.message(exn)->Option.getOr("Error")))
@@ -210,7 +212,7 @@ describe("Path Searching", () => {
       cacheInvalidateExpirationSecs: 86400,
     }
 
-    Async.it_skip(
+    Async.it(
       "download v0.2.6.4.0.3 from GitHub the first time",
       async () => {
         // set timeout to 600 seconds because we are downloading stuff for the first time
@@ -251,12 +253,12 @@ describe("Path Searching", () => {
       },
     )
 
-    Async.it_skip(
+    Async.it(
       "download v0.2.6.4.0.3 from GitHub the second time",
       async () => {
         // set timeout to only 1 seconds because we are downloading stuff for the second time
         This.timeout(1000)
-        switch await Source.search(Source.FromGitHub(repo)) {
+        switch await Source.search(Source.FromGitHub(repo), ~timeout=1000) {
         | Error(err) => Exn.raiseError(Source.Error.toString(err))
         | Ok(ViaPipe(command, args, options, source)) =>
           let downloadDir = switch downloadDirRef.contents {
@@ -309,6 +311,7 @@ describe("Path Searching", () => {
 })
 
 describe("Port Probing", () => {
+  This.timeout(10000)
   describe("`Source.Port.probe`", () => {
     Async.it(
       "should report Ok on the port that is available",
@@ -322,7 +325,7 @@ describe("Port Probing", () => {
           },
         )
 
-        let _ = await Source.TCP.probe(23456, "localhost")
+        let _ = await Source.TCP.probe(23456, "localhost", ~timeout=1000)
         NodeJs.Net.TcpServer.close(tempServer, ~callback=_ => ())->ignore
       },
     )
@@ -330,7 +333,7 @@ describe("Port Probing", () => {
     Async.it(
       "should report Error on ports that are not available",
       async () => {
-        switch await Source.TCP.probe(12345, "localhost") {
+        switch await Source.TCP.probe(12345, "localhost", ~timeout=1000) {
         | Error(_exn) => ()
         | Ok() => raise(Js.Exn.raiseError("Port should not be available"))
         }

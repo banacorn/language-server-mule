@@ -23,4 +23,11 @@ module Promise = {
     | _ => raise(Failure("Promise is not initialized"))
     }
   }
+
+  let setTimeout = async time => {
+    let (promise, resolve, _) = pending()
+    let id = Js.Global.setTimeout(resolve, time)
+    await promise
+    Js.Global.clearTimeout(id)
+  }
 }
