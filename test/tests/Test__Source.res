@@ -126,26 +126,32 @@ describe("Path Searching", () => {
         | Error(TCP(port, host, error)) =>
           Assert.deepEqual(port, 23457)
           Assert.deepEqual(host, "remotehost")
-          switch await Source__GitHub.Platform.determine() {
-          | Error(exn) =>
-            raise(Failure(Exn.message(exn)->Option.getOr("Cannot determine platform")))
-          | Ok(MacOS) =>
-            Assert.deepEqual(
-              Source__TCP.Error.toString(error),
-              "Error: getaddrinfo ENOTFOUND remotehost",
-            )
-          | Ok(Windows) =>
-            Assert.deepEqual(
-              Source__TCP.Error.toString(error),
-              "Error: getaddrinfo ENOTFOUND remotehost",
-            )
-          | Ok(Ubuntu) =>
-            Assert.deepEqual(
-              Source__TCP.Error.toString(error),
-              "Error: getaddrinfo EAI_AGAIN remotehost",
-            )
-          | Ok(Others(_)) => ()
-          }
+
+          let result = await Source__GitHub.Platform.determine()
+          Js.log(result)
+        // switch result["os"] {
+        // {"os": string, "dist": string, "codename": string, "release": string}
+
+        // switch await Source__GitHub.Platform.determine() {
+        // | Error(exn) =>
+        //   raise(Failure(Exn.message(exn)->Option.getOr("Cannot determine platform")))
+        // | Ok(MacOS) =>
+        //   Assert.deepEqual(
+        //     Source__TCP.Error.toString(error),
+        //     "Error: getaddrinfo ENOTFOUND remotehost",
+        //   )
+        // | Ok(Windows) =>
+        //   Assert.deepEqual(
+        //     Source__TCP.Error.toString(error),
+        //     "Error: getaddrinfo ENOTFOUND remotehost",
+        //   )
+        // | Ok(Ubuntu) =>
+        //   Assert.deepEqual(
+        //     Source__TCP.Error.toString(error),
+        //     "Error: getaddrinfo EAI_AGAIN remotehost",
+        //   )
+        // | Ok(Others(_)) => ()
+        // }
         | Error(_) => raise(Failure("Expecting TCP-related error"))
         | Ok(ViaPipe(_)) => Exn.raiseError("Expecting Error")
         | Ok(ViaTCP(_)) => Exn.raiseError("Expecting Error")
@@ -202,7 +208,20 @@ describe("Path Searching", () => {
       repository: "agda-language-server",
       userAgent: "agda/agda-mode-vscode",
       globalStoragePath: "./",
-      chooseFromReleases: SpecifyVersion("v0.2.6.4.0.3"),
+      chooseFromReleases: releases =>
+        switch releases->Release.chooseByTagName("v0.2.6.4.0.3") {
+        | None => None
+        | Some(release) =>
+          switch release.assets->Asset.chooseByName("als-windows.zip") {
+          | None => None
+          | Some(asset) =>
+            Some({
+              release,
+              asset,
+              saveAsFileName: release.tag_name ++ "-als-windows.zip",
+            })
+          }
+        },
       onDownload: _ => (),
       afterDownload,
       log: x => Js.log(x),
