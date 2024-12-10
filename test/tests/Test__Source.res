@@ -129,29 +129,26 @@ describe("Path Searching", () => {
 
           let result = await Source__GitHub.Platform.determine()
           Js.log(result)
-        // switch result["os"] {
-        // {"os": string, "dist": string, "codename": string, "release": string}
-
-        // switch await Source__GitHub.Platform.determine() {
-        // | Error(exn) =>
-        //   raise(Failure(Exn.message(exn)->Option.getOr("Cannot determine platform")))
-        // | Ok(MacOS) =>
-        //   Assert.deepEqual(
-        //     Source__TCP.Error.toString(error),
-        //     "Error: getaddrinfo ENOTFOUND remotehost",
-        //   )
-        // | Ok(Windows) =>
-        //   Assert.deepEqual(
-        //     Source__TCP.Error.toString(error),
-        //     "Error: getaddrinfo ENOTFOUND remotehost",
-        //   )
-        // | Ok(Ubuntu) =>
-        //   Assert.deepEqual(
-        //     Source__TCP.Error.toString(error),
-        //     "Error: getaddrinfo EAI_AGAIN remotehost",
-        //   )
-        // | Ok(Others(_)) => ()
-        // }
+          switch result["os"] {
+          | "darwin" =>
+            Assert.deepEqual(
+              Source__TCP.Error.toString(error),
+              "Error: getaddrinfo ENOTFOUND remotehost",
+            )
+          | "win32" =>
+            Assert.deepEqual(
+              Source__TCP.Error.toString(error),
+              "Error: getaddrinfo ENOTFOUND remotehost",
+            )
+          | "linux" =>
+            if result["dist"] == "Ubuntu" {
+              Assert.deepEqual(
+                Source__TCP.Error.toString(error),
+                "Error: getaddrinfo EAI_AGAIN remotehost",
+              )
+            }
+          | _ => ()
+          }
         | Error(_) => raise(Failure("Expecting TCP-related error"))
         | Ok(ViaPipe(_)) => Exn.raiseError("Expecting Error")
         | Ok(ViaTCP(_)) => Exn.raiseError("Expecting Error")

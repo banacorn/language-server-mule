@@ -52,7 +52,7 @@ module Nd = {
 
     let writeFile = async (filepath, string) => {
       let fileHandle = await NodeJs.Fs.open_(filepath, NodeJs.Fs.Flag.write)
-      let buffer = await NodeJs.Fs.FileHandle.writeFile(
+      let _ = await NodeJs.Fs.FileHandle.writeFile(
         fileHandle,
         NodeJs.Buffer.fromString(string),
       )
