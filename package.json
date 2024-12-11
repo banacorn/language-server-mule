@@ -1,6 +1,6 @@
 {
   "name": "language-server-mule",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Rescript library for hauling language servers from your disk or somewhere else",
   "main": "Main.bs.js",
   "scripts": {
@@ -24,7 +24,7 @@
     "mocha": "^10.4.0",
     "rescript": "^11.1.4",
     "rescript-mocha": "github:DZakh-forks/rescript-mocha#uncurried",
-    "rescript-vscode": "github:banacorn/rescript-vscode#v0.0.22",
+    "rescript-vscode": "github:banacorn/rescript-vscode#v0.0.29",
     "@vscode/test-electron": "^2.3.8",
     "vscode-test": "^1.3.0"
   },

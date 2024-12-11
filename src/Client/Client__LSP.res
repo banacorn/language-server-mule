@@ -79,14 +79,16 @@ module Module: Module = {
     let clientOptions = {
       // Register the server for plain text documents
       let documentSelector: DocumentSelector.t = [
-        StringOr.others({
-          open DocumentFilter
-          {
-            scheme: Some("file"),
-            pattern: None,
-            language: Some(id),
-          }
-        }),
+        StringOr.make(
+          Others({
+            open DocumentFilter
+            {
+              scheme: Some("file"),
+              pattern: None,
+              language: Some(id),
+            }
+          }),
+        ),
       ]
 
       // Notify the server about file changes to '.clientrc files contained in the workspace
