@@ -205,7 +205,11 @@ describe("Path Searching", () => {
       repository: "agda-language-server",
       userAgent: "agda/agda-mode-vscode",
       globalStoragePath: "./",
-      chooseFromReleases: releases =>
+      cacheInvalidateExpirationSecs: 86400,
+    }
+
+    let callbacks = {
+      Callbacks.chooseFromReleases: releases =>
         switch releases->Release.chooseByTagName("v0.2.6.4.0.3") {
         | None => None
         | Some(release) =>
@@ -222,7 +226,6 @@ describe("Path Searching", () => {
       onDownload: _ => (),
       afterDownload,
       log: x => Js.log(x),
-      cacheInvalidateExpirationSecs: 86400,
     }
 
     Async.it(
@@ -231,7 +234,7 @@ describe("Path Searching", () => {
         // set timeout to 600 seconds because we are downloading stuff for the first time
         This.timeout(600000)
 
-        switch await Source.search(Source.FromGitHub(repo)) {
+        switch await Source.search(Source.FromGitHub(repo, callbacks)) {
         | Error(err) => Exn.raiseError(Source.Error.toString(err))
         | Ok(ViaPipe(command, args, options, source)) =>
           let downloadDir = switch downloadDirRef.contents {
@@ -271,7 +274,7 @@ describe("Path Searching", () => {
       async () => {
         // set timeout to only 1 seconds because we are downloading stuff for the second time
         This.timeout(1000)
-        switch await Source.search(Source.FromGitHub(repo), ~timeout=1000) {
+        switch await Source.search(Source.FromGitHub(repo, callbacks), ~timeout=1000) {
         | Error(err) => Exn.raiseError(Source.Error.toString(err))
         | Ok(ViaPipe(command, args, options, source)) =>
           let downloadDir = switch downloadDirRef.contents {

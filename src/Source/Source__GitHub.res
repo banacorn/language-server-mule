@@ -52,10 +52,7 @@ module Nd = {
 
     let writeFile = async (filepath, string) => {
       let fileHandle = await NodeJs.Fs.open_(filepath, NodeJs.Fs.Flag.write)
-      let _ = await NodeJs.Fs.FileHandle.writeFile(
-        fileHandle,
-        NodeJs.Buffer.fromString(string),
-      )
+      let _ = await NodeJs.Fs.FileHandle.writeFile(fileHandle, NodeJs.Buffer.fromString(string))
       await NodeJs.Fs.FileHandle.close(fileHandle)
     }
 
@@ -336,7 +333,7 @@ let chmodExecutable = async path =>
   }
 
 // module for determining the which OS the user is using
-// see https://github.com/retrohacker/getos for more 
+// see https://github.com/retrohacker/getos for more
 module Platform = {
   type t = {"os": string, "dist": string, "codename": string, "release": string}
 
@@ -382,23 +379,13 @@ module Platform = {
 
 module Repo = {
   type t = {
+    // GitHub
     username: string,
     repository: string,
     userAgent: string,
+    // for caching
     globalStoragePath: string,
-    chooseFromReleases: array<Release.t> => option<Target.t>,
-    onDownload: Download.Event.t => unit,
-    afterDownload: (
-      bool, // if is from cache
-      (string, Target.t),
-    ) => promise<
-      result<
-        (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
-        Error.t,
-      >,
-    >,
-    cacheInvalidateExpirationSecs: int,
-    log: string => unit,
+    cacheInvalidateExpirationSecs: int
   }
 
   // convert all fields to a JS object-like string
@@ -416,8 +403,26 @@ module Repo = {
     ->Array.join(", ") ++ "}"
 }
 
+module Callbacks = {
+  type t = {
+    chooseFromReleases: array<Release.t> => option<Target.t>,
+    onDownload: Download.Event.t => unit,
+    afterDownload: (
+      bool, // if is from cache
+      (string, Target.t),
+    ) => promise<
+      result<
+        (string, array<string>, option<Client__LSP__Binding.executableOptions>, Target.t),
+        Error.t,
+      >,
+    >,
+    log: string => unit,
+  }
+}
+
 module Module: {
-  let get: Repo.t => promise<result<(bool, Target.t), Error.t>>
+  let getReleaseManifest: Repo.t => promise<(result<array<Release.t>, Error.t>, bool)>
+  let get: (Repo.t, Callbacks.t) => promise<result<(bool, Target.t), Error.t>>
 } = {
   let inFlightDownloadFileName = "in-flight.download"
 
@@ -445,7 +450,7 @@ module Module: {
     }
   }
 
-  let downloadLanguageServer = async (repo: Repo.t, target: Target.t) => {
+  let downloadLanguageServer = async (repo: Repo.t, callbacks: Callbacks.t, target: Target.t) => {
     let url = NodeJs.Url.make(target.asset.browser_download_url)
     let httpOptions = {
       "host": url.host,
@@ -458,7 +463,11 @@ module Module: {
     let inFlightDownloadPath = NodeJs.Path.join2(repo.globalStoragePath, inFlightDownloadFileName)
     let destPath = NodeJs.Path.join2(repo.globalStoragePath, target.saveAsFileName)
 
-    let result = switch await Download.asFile(httpOptions, inFlightDownloadPath, repo.onDownload) {
+    let result = switch await Download.asFile(
+      httpOptions,
+      inFlightDownloadPath,
+      callbacks.onDownload,
+    ) {
     | Error(e) => Error(Error.CannotDownload(e))
     | Ok() =>
       // suffix with ".zip" after downloaded
@@ -494,9 +503,62 @@ module Module: {
     }
   }
 
+  module ReleaseManifestCache = {
+    // util for getting stat modify time in ms
+    let statModifyTime = async path =>
+      switch await NodeJs.Fs.lstat(path) {
+      | stat => Ok(stat.mtimeMs)
+      | exception Exn.Error(_) => Error(Error.CannotStatFile(path))
+      }
+
+    let getCachePath = globalStoragePath =>
+      NodeJs.Path.join2(globalStoragePath, "releases-cache.json")
+
+    let isValid = async (globalStoragePath, cacheInvalidateExpirationSecs) => {
+      let path = getCachePath(globalStoragePath)
+
+      if NodeJs.Fs.existsSync(path) {
+        switch await statModifyTime(path) {
+        | Error(_) => false // invalidate when there's an error
+        | Ok(lastModifiedTime) =>
+          let currentTime = Js.Date.now()
+          // devise time difference in seconds
+          let diff = int_of_float((currentTime -. lastModifiedTime) /. 1000.0)
+          // cache is invalid if it is too old
+          diff < cacheInvalidateExpirationSecs
+        }
+      } else {
+        // the cache does not exist, hence not valid
+        false
+      }
+    }
+
+    let persist = async (self, releases) => {
+      let json = Release.encodeReleases(releases)->Js_json.stringify
+      let path = getCachePath(self)
+      await Nd.Fs.writeFile(path, json)
+    }
+
+    let get = async globalStoragePath => {
+      // use the cached releases manifest
+      let path = getCachePath(globalStoragePath)
+      // read file and decode as json
+      let string = await Nd.Fs.readFile(path)
+      switch Js.Json.parseExn(string) {
+      | json =>
+        // parse the json
+        switch Release.decodeReleases(json) {
+        | Error(e) => Error(e)
+        | Ok(releases) => Ok(releases)
+        }
+      | exception _ => Error(Error.JsonParseError(string))
+      }
+    }
+  }
+
   // NOTE: no caching
   // timeouts after 1000ms
-  let getReleasesFromGitHubRepo = async (repo: Repo.t) => {
+  let getReleaseManifestFromGitHubRepo = async (repo: Repo.t) => {
     let httpOptions = {
       "host": "api.github.com",
       "path": "/repos/" ++ repo.username ++ "/" ++ repo.repository ++ "/releases",
@@ -510,90 +572,52 @@ module Module: {
     }
   }
 
-  module Cache = {
-    // util for getting stat modify time in ms
-    let statModifyTime = async path =>
-      switch await NodeJs.Fs.lstat(path) {
-      | stat => Ok(stat.mtimeMs)
-      | exception Exn.Error(_) => Error(Error.CannotStatFile(path))
-      }
-
-    let cachePath = repo => NodeJs.Path.join2(repo.Repo.globalStoragePath, "releases-cache.json")
-
-    let isValid = async self => {
-      let path = cachePath(self)
-
-      if NodeJs.Fs.existsSync(path) {
-        switch await statModifyTime(path) {
-        | Error(_) => false // invalidate when there's an error
-        | Ok(lastModifiedTime) =>
-          let currentTime = Js.Date.now()
-          // devise time difference in seconds
-          let diff = int_of_float((currentTime -. lastModifiedTime) /. 1000.0)
-          // cache is invalid if it is too old
-          diff < self.cacheInvalidateExpirationSecs
-        }
-      } else {
-        // the cache does not exist, hence not valid
-        false
-      }
-    }
-
-    let persist = async (self, releases) => {
-      let json = Release.encodeReleases(releases)->Js_json.stringify
-      let path = cachePath(self)
-      await Nd.Fs.writeFile(path, json)
-      Ok(releases) // pass it on for chaining
-    }
-  }
-
-  // use cached releases instead of fetching them from GitHub, if the cached releases data is not too old (24 hrs)
-  let getReleases = async repo => {
-    let isValid = await Cache.isValid(repo)
+  // use cached release manifest instead of fetching them from GitHub, if the cached releases dmanifestata is not too old (24 hrs)
+  // returns an additional boolean indicating if the target is from cache
+  let getReleaseManifest = async (repo: Repo.t) => {
+    let isValid = await ReleaseManifestCache.isValid(
+      repo.globalStoragePath,
+      repo.cacheInvalidateExpirationSecs,
+    )
     if isValid {
-      // use the cached releases data
-      let path = Cache.cachePath(repo)
-      repo.log("[ mule ] Use cached releases data at:" ++ path)
-
-      // read file and decode as json
-      let string = await Nd.Fs.readFile(path)
-      switch Js.Json.parseExn(string) {
-      | json =>
-        // parse the json
-        switch Release.decodeReleases(json) {
-        | Error(e) => Error(e)
-        | Ok(releases) => Ok(releases)
-        }
-      | exception _ => Error(Error.JsonParseError(string))
-      }
+      // use the cached releases manifest
+      let result = await ReleaseManifestCache.get(repo.globalStoragePath)
+      (result, true)
     } else {
-      repo.log("[ mule ] GitHub releases cache invalidated")
-      switch await getReleasesFromGitHubRepo(repo) {
-      | Ok(releases) => await Cache.persist(repo, releases)
-      | Error(e) => Error(e)
+      let result = await getReleaseManifestFromGitHubRepo(repo)
+      // cache the releases
+      switch result {
+      | Ok(releases) => await ReleaseManifestCache.persist(repo.globalStoragePath, releases)
+      | Error(_) => ()
       }
+      (result, false)
     }
   }
 
-  let get = async (repo: Repo.t) => {
+  let get = async (repo: Repo.t, callbacks: Callbacks.t) => {
     let ifIsDownloading = await isDownloading(repo.globalStoragePath)
     if ifIsDownloading {
       Error(Error.AlreadyDownloading)
     } else {
-      switch await getReleases(repo) {
-      | Error(error) => Error(error)
-      | Ok(releases) =>
-        switch repo.chooseFromReleases(releases) {
+      switch await getReleaseManifest(repo) {
+      | (Error(error), _) => Error(error)
+      | (Ok(releases), isFromCache) =>
+        if isFromCache {
+          callbacks.log("Use cached release manifest")
+        } else {
+          callbacks.log("Cache invalidated, use fetched release manifest")
+        }
+        switch callbacks.chooseFromReleases(releases) {
         | None => Error(Error.NoMatchingRelease)
         | Some(target) =>
           // don't download from GitHub if `target.fileName` already exists
           let destPath = NodeJs.Path.join2(repo.globalStoragePath, target.saveAsFileName)
           if NodeJs.Fs.existsSync(destPath) {
-            repo.log("[ mule ] Used downloaded program at:" ++ destPath)
+            callbacks.log("Used downloaded program at:" ++ destPath)
             Ok((true, target))
           } else {
-            repo.log("[ mule ] Download from GitHub instead")
-            switch await downloadLanguageServer(repo, target) {
+            callbacks.log("Download from GitHub instead")
+            switch await downloadLanguageServer(repo, callbacks, target) {
             | Error(error) => Error(error)
             | Ok() => Ok((false, target))
             }

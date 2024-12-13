@@ -7,7 +7,7 @@ type t =
   | FromFile(string) // path of the program
   | FromCommand(string) // name of the command
   | FromTCP(int, string) // port, host
-  | FromGitHub(Source__GitHub.Repo.t)
+  | FromGitHub(Source__GitHub.Repo.t, Source__GitHub.Callbacks.t)
 
 // error from the sources
 module Error = {
@@ -59,15 +59,15 @@ module Module: {
       | Error(e) => Error(Error.TCP(port, host, e))
       | Ok() => Ok(Method.ViaTCP(port, host, FromTCP(port, host)))
       }
-    | FromGitHub(info) =>
-      switch await GitHub.get(info) {
+    | FromGitHub(repo, callbacks) =>
+      switch await GitHub.get(repo, callbacks) {
       | Error(e) => Error(Error.GitHub(e))
       | Ok((isCached, target)) =>
-        let destPath = NodeJs.Path.join2(info.globalStoragePath, target.saveAsFileName)
-        switch await info.afterDownload(isCached, (destPath, target)) {
+        let destPath = NodeJs.Path.join2(repo.globalStoragePath, target.saveAsFileName)
+        switch await callbacks.afterDownload(isCached, (destPath, target)) {
         | Error(e) => Error(Error.GitHub(e))
         | Ok((path, args, options, target)) =>
-          Ok(Method.ViaPipe(path, args, options, FromGitHub(info, target.release, target.asset)))
+          Ok(Method.ViaPipe(path, args, options, FromGitHub(repo, target.release, target.asset)))
         }
       }
     }
