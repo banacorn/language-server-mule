@@ -385,7 +385,7 @@ module Repo = {
     userAgent: string,
     // for caching
     globalStoragePath: string,
-    cacheInvalidateExpirationSecs: int
+    cacheInvalidateExpirationSecs: int,
   }
 
   // convert all fields to a JS object-like string
@@ -511,12 +511,11 @@ module Module: {
       | exception Exn.Error(_) => Error(Error.CannotStatFile(path))
       }
 
-    let getCachePath = globalStoragePath =>
+    let makeCachePath = globalStoragePath =>
       NodeJs.Path.join2(globalStoragePath, "releases-cache.json")
 
     let isValid = async (globalStoragePath, cacheInvalidateExpirationSecs) => {
-      let path = getCachePath(globalStoragePath)
-
+      let path = makeCachePath(globalStoragePath)
       if NodeJs.Fs.existsSync(path) {
         switch await statModifyTime(path) {
         | Error(_) => false // invalidate when there's an error
@@ -535,13 +534,13 @@ module Module: {
 
     let persist = async (self, releases) => {
       let json = Release.encodeReleases(releases)->Js_json.stringify
-      let path = getCachePath(self)
+      let path = makeCachePath(self)
       await Nd.Fs.writeFile(path, json)
     }
 
     let get = async globalStoragePath => {
       // use the cached releases manifest
-      let path = getCachePath(globalStoragePath)
+      let path = makeCachePath(globalStoragePath)
       // read file and decode as json
       let string = await Nd.Fs.readFile(path)
       switch Js.Json.parseExn(string) {

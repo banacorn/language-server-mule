@@ -128,7 +128,6 @@ describe("Path Searching", () => {
           Assert.deepEqual(host, "remotehost")
 
           let result = await Source__GitHub.Platform.determine()
-          Js.log(result)
           switch result["os"] {
           | "darwin" =>
             Assert.deepEqual(
